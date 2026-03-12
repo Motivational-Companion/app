@@ -19,11 +19,35 @@ export default function Conversation({ onBack }: { onBack?: () => void }) {
   const [micAllowed, setMicAllowed] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Mic selection
+  const [mics, setMics] = useState<MediaDeviceInfo[]>([]);
+  const [selectedMic, setSelectedMic] = useState<string>("");
+
   // Live lists
   const [issues, setIssues] = useState<NoteItem[]>([]);
   const [goals, setGoals] = useState<NoteItem[]>([]);
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [lastAdded, setLastAdded] = useState<string | null>(null);
+
+  // Enumerate mics on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        // Need permission first to get device labels
+        await navigator.mediaDevices.getUserMedia({ audio: true });
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const audioInputs = devices.filter((d) => d.kind === "audioinput");
+        setMics(audioInputs);
+        setMicAllowed(true);
+        // Default to first device
+        if (audioInputs.length > 0 && !selectedMic) {
+          setSelectedMic(audioInputs[0].deviceId);
+        }
+      } catch {
+        setMicAllowed(false);
+      }
+    })();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Flash animation for newly added items
   useEffect(() => {
@@ -82,10 +106,6 @@ export default function Conversation({ onBack }: { onBack?: () => void }) {
   const startConversation = useCallback(async () => {
     setError(null);
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      setMicAllowed(true);
-      stream; // consumed by ElevenLabs internally
-
       const agentId = process.env.NEXT_PUBLIC_ELEVENLABS_AGENT_ID;
       if (!agentId || agentId === "your-agent-id-here") {
         setError("Agent ID not configured.");
@@ -95,6 +115,7 @@ export default function Conversation({ onBack }: { onBack?: () => void }) {
       await conversation.startSession({
         agentId,
         connectionType: "websocket",
+        ...(selectedMic ? { inputDeviceId: selectedMic } : {}),
       });
 
       setHasStarted(true);
@@ -105,7 +126,7 @@ export default function Conversation({ onBack }: { onBack?: () => void }) {
         setMicAllowed(false);
       }
     }
-  }, [conversation]);
+  }, [conversation, selectedMic]);
 
   const endConversation = useCallback(async () => {
     try {
@@ -157,10 +178,30 @@ export default function Conversation({ onBack }: { onBack?: () => void }) {
             ))}
           </div>
 
+          {/* Mic selector */}
+          {mics.length > 1 && (
+            <div className="w-full mb-4">
+              <label className="text-xs text-text-muted block mb-1.5">Microphone</label>
+              <select
+                value={selectedMic}
+                onChange={(e) => setSelectedMic(e.target.value)}
+                className="w-full px-3 py-2.5 rounded-xl border border-border bg-bg text-text text-sm appearance-none cursor-pointer"
+              >
+                {mics.map((mic) => (
+                  <option key={mic.deviceId} value={mic.deviceId}>
+                    {mic.label || `Microphone ${mic.deviceId.slice(0, 8)}`}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           <button
             onClick={startConversation}
+            disabled={micAllowed === false}
             className="w-full h-14 bg-primary text-white rounded-2xl text-lg font-semibold
-                       hover:bg-primary-dark active:scale-[0.98] transition-all shadow-lg shadow-primary/20"
+                       hover:bg-primary-dark active:scale-[0.98] transition-all shadow-lg shadow-primary/20
+                       disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Talk to Sam
           </button>
