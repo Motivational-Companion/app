@@ -3,14 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import type { ChatMessage, ActionPlan } from "@/lib/types";
 import { SAM_FIRST_MESSAGE } from "@/lib/sam-prompt";
-
-type NoteItem = {
-  id: string;
-  text: string;
-  tool: string;
-  addedAt: number;
-  timeframe?: string;
-};
+import LiveLists, { type NoteItem } from "@/components/LiveLists";
 
 type Props = {
   onBack?: () => void;
@@ -33,15 +26,31 @@ export default function TextConversation({ onBack, onPlanReady }: Props) {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const listsRef = useRef<HTMLDivElement>(null);
 
-  // Flash animation
-  useEffect(() => {
-    if (lastAdded) {
-      const t = setTimeout(() => setLastAdded(null), 1500);
-      return () => clearTimeout(t);
-    }
-  }, [lastAdded]);
+  const getListSetter = (key: "issues" | "goals" | "tasks") =>
+    key === "issues" ? setIssues : key === "goals" ? setGoals : setTasks;
+
+  const handleRemove = useCallback(
+    (listKey: "issues" | "goals" | "tasks", id: string) => {
+      getListSetter(listKey)((prev) => prev.filter((item) => item.id !== id));
+    },
+    []
+  );
+
+  const handleReorder = useCallback(
+    (listKey: "issues" | "goals" | "tasks", id: string, direction: "up" | "down") => {
+      getListSetter(listKey)((prev) => {
+        const idx = prev.findIndex((item) => item.id === id);
+        if (idx < 0) return prev;
+        const swapIdx = direction === "up" ? idx - 1 : idx + 1;
+        if (swapIdx < 0 || swapIdx >= prev.length) return prev;
+        const next = [...prev];
+        [next[idx], next[swapIdx]] = [next[swapIdx], next[idx]];
+        return next;
+      });
+    },
+    []
+  );
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -56,7 +65,6 @@ export default function TextConversation({ onBack, onPlanReady }: Props) {
       const item: NoteItem = {
         id: crypto.randomUUID(),
         text: data.title,
-        tool,
         timeframe: data.timeframe,
         addedAt: Date.now(),
       };
@@ -247,48 +255,19 @@ export default function TextConversation({ onBack, onPlanReady }: Props) {
 
           {/* Live lists */}
           {totalNotes > 0 && (
-            <div ref={listsRef} className="px-4 pb-4 space-y-3">
+            <div className="px-4 pb-4">
               <div className="border-t border-border pt-3">
                 <p className="text-xs text-text-muted font-semibold uppercase tracking-wider mb-3">
                   Your List
                 </p>
-
-                {issues.length > 0 && (
-                  <NoteList
-                    title="Issues"
-                    icon="!"
-                    color="text-red-500"
-                    bg="bg-red-50"
-                    border="border-red-100"
-                    items={issues}
-                    lastAdded={lastAdded}
-                  />
-                )}
-
-                {goals.length > 0 && (
-                  <NoteList
-                    title="Goals"
-                    icon="&#9733;"
-                    color="text-amber-500"
-                    bg="bg-amber-50"
-                    border="border-amber-100"
-                    items={goals}
-                    lastAdded={lastAdded}
-                  />
-                )}
-
-                {tasks.length > 0 && (
-                  <NoteList
-                    title="To-Dos"
-                    icon="&#10003;"
-                    color="text-primary"
-                    bg="bg-primary/5"
-                    border="border-primary/10"
-                    items={tasks}
-                    lastAdded={lastAdded}
-                    showTimeframe
-                  />
-                )}
+                <LiveLists
+                  issues={issues}
+                  goals={goals}
+                  tasks={tasks}
+                  onRemove={handleRemove}
+                  onReorder={handleReorder}
+                  lastAdded={lastAdded}
+                />
               </div>
             </div>
           )}
@@ -338,56 +317,3 @@ export default function TextConversation({ onBack, onPlanReady }: Props) {
   );
 }
 
-function NoteList({
-  title,
-  icon,
-  color,
-  bg,
-  border,
-  items,
-  lastAdded,
-  showTimeframe,
-}: {
-  title: string;
-  icon: string;
-  color: string;
-  bg: string;
-  border: string;
-  items: NoteItem[];
-  lastAdded: string | null;
-  showTimeframe?: boolean;
-}) {
-  return (
-    <div className="mb-3">
-      <div className="flex items-center gap-2 mb-1.5">
-        <span
-          className={`text-xs ${color}`}
-          dangerouslySetInnerHTML={{ __html: icon }}
-        />
-        <span className="text-xs font-semibold text-text-soft uppercase tracking-wider">
-          {title}
-        </span>
-        <span className="text-xs text-text-muted">({items.length})</span>
-      </div>
-      <div className="space-y-1.5">
-        {items.map((item) => (
-          <div
-            key={item.id}
-            className={`px-3 py-2 rounded-xl text-sm text-text border ${border} ${bg} transition-all duration-500 ${
-              lastAdded === item.id
-                ? "animate-slide-in ring-2 ring-primary/30"
-                : ""
-            }`}
-          >
-            {item.text}
-            {showTimeframe && item.timeframe && (
-              <span className="ml-2 text-xs text-text-muted">
-                {item.timeframe}
-              </span>
-            )}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}

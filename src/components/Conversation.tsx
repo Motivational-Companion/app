@@ -2,17 +2,8 @@
 
 import { useConversation } from "@elevenlabs/react";
 import type { DisconnectionDetails, Mode, Status } from "@elevenlabs/react";
-import { useCallback, useState, useEffect, useRef } from "react";
-
-type NoteItem = {
-  id: string;
-  text: string;
-  addedAt: number;
-};
-
-type TaskItem = NoteItem & {
-  timeframe?: string;
-};
+import { useCallback, useState, useEffect } from "react";
+import LiveLists, { type NoteItem } from "@/components/LiveLists";
 
 export default function Conversation({ onBack }: { onBack?: () => void }) {
   const [hasStarted, setHasStarted] = useState(false);
@@ -26,8 +17,33 @@ export default function Conversation({ onBack }: { onBack?: () => void }) {
   // Live lists
   const [issues, setIssues] = useState<NoteItem[]>([]);
   const [goals, setGoals] = useState<NoteItem[]>([]);
-  const [tasks, setTasks] = useState<TaskItem[]>([]);
+  const [tasks, setTasks] = useState<NoteItem[]>([]);
   const [lastAdded, setLastAdded] = useState<string | null>(null);
+
+  const getListSetter = (key: "issues" | "goals" | "tasks") =>
+    key === "issues" ? setIssues : key === "goals" ? setGoals : setTasks;
+
+  const handleRemove = useCallback(
+    (listKey: "issues" | "goals" | "tasks", id: string) => {
+      getListSetter(listKey)((prev) => prev.filter((item) => item.id !== id));
+    },
+    []
+  );
+
+  const handleReorder = useCallback(
+    (listKey: "issues" | "goals" | "tasks", id: string, direction: "up" | "down") => {
+      getListSetter(listKey)((prev) => {
+        const idx = prev.findIndex((item) => item.id === id);
+        if (idx < 0) return prev;
+        const swapIdx = direction === "up" ? idx - 1 : idx + 1;
+        if (swapIdx < 0 || swapIdx >= prev.length) return prev;
+        const next = [...prev];
+        [next[idx], next[swapIdx]] = [next[swapIdx], next[idx]];
+        return next;
+      });
+    },
+    []
+  );
 
   // Enumerate mics on mount
   useEffect(() => {
@@ -80,7 +96,7 @@ export default function Conversation({ onBack }: { onBack?: () => void }) {
         return "Noted.";
       },
       note_task: async (params: { title: string; timeframe?: string }) => {
-        const item: TaskItem = {
+        const item: NoteItem = {
           id: crypto.randomUUID(),
           text: params.title,
           timeframe: params.timeframe,
@@ -279,33 +295,14 @@ export default function Conversation({ onBack }: { onBack?: () => void }) {
             </p>
           )}
 
-          {issues.length > 0 && (
-            <ListSection
-              title="Issues"
-              emoji="!"
-              color="text-red-500"
-              bgColor="bg-red-50"
-              borderColor="border-red-100"
-              items={issues}
-              lastAdded={lastAdded}
-            />
-          )}
-
-          {goals.length > 0 && (
-            <ListSection
-              title="Goals"
-              emoji="&#9733;"
-              color="text-amber-500"
-              bgColor="bg-amber-50"
-              borderColor="border-amber-100"
-              items={goals}
-              lastAdded={lastAdded}
-            />
-          )}
-
-          {tasks.length > 0 && (
-            <TaskSection tasks={tasks} lastAdded={lastAdded} />
-          )}
+          <LiveLists
+            issues={issues}
+            goals={goals}
+            tasks={tasks}
+            onRemove={handleRemove}
+            onReorder={handleReorder}
+            lastAdded={lastAdded}
+          />
         </div>
       </div>
     </div>
@@ -313,91 +310,6 @@ export default function Conversation({ onBack }: { onBack?: () => void }) {
 }
 
 // ── Sub-components ──
-
-function ListSection({
-  title,
-  emoji,
-  color,
-  bgColor,
-  borderColor,
-  items,
-  lastAdded,
-}: {
-  title: string;
-  emoji: string;
-  color: string;
-  bgColor: string;
-  borderColor: string;
-  items: NoteItem[];
-  lastAdded: string | null;
-}) {
-  const endRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-  }, [items.length]);
-
-  return (
-    <div className="mb-5">
-      <div className="flex items-center gap-2 mb-2">
-        <span className={`text-sm ${color}`} dangerouslySetInnerHTML={{ __html: emoji }} />
-        <h3 className="text-xs font-semibold text-text-soft uppercase tracking-wider">{title}</h3>
-        <span className="text-xs text-text-muted">({items.length})</span>
-      </div>
-      <div className="space-y-2">
-        {items.map((item) => (
-          <div
-            key={item.id}
-            className={`px-3 py-2.5 rounded-xl text-sm text-text border ${borderColor} ${bgColor} transition-all duration-500 ${
-              lastAdded === item.id ? "animate-slide-in ring-2 ring-primary/30" : ""
-            }`}
-          >
-            {item.text}
-          </div>
-        ))}
-        <div ref={endRef} />
-      </div>
-    </div>
-  );
-}
-
-function TaskSection({
-  tasks,
-  lastAdded,
-}: {
-  tasks: TaskItem[];
-  lastAdded: string | null;
-}) {
-  const endRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-  }, [tasks.length]);
-
-  return (
-    <div className="mb-5">
-      <div className="flex items-center gap-2 mb-2">
-        <span className="text-sm text-primary">&#10003;</span>
-        <h3 className="text-xs font-semibold text-text-soft uppercase tracking-wider">To-Dos</h3>
-        <span className="text-xs text-text-muted">({tasks.length})</span>
-      </div>
-      <div className="space-y-2">
-        {tasks.map((item) => (
-          <div
-            key={item.id}
-            className={`px-3 py-2.5 rounded-xl text-sm border border-primary/10 bg-primary/5 transition-all duration-500 ${
-              lastAdded === item.id ? "animate-slide-in ring-2 ring-primary/30" : ""
-            }`}
-          >
-            <span className="text-text">{item.text}</span>
-            {item.timeframe && (
-              <span className="ml-2 text-xs text-text-muted">{item.timeframe}</span>
-            )}
-          </div>
-        ))}
-        <div ref={endRef} />
-      </div>
-    </div>
-  );
-}
 
 function StatusIndicator({
   status,
