@@ -4,103 +4,102 @@ import { useConversation } from "@elevenlabs/react";
 import type { DisconnectionDetails, Mode, Status } from "@elevenlabs/react";
 import { useCallback, useState, useEffect, useRef } from "react";
 
-type Message = {
-  role: "user" | "agent";
+type NoteItem = {
+  id: string;
   text: string;
-  timestamp: number;
+  addedAt: number;
 };
 
-type DebugEvent = {
-  time: string;
-  type: string;
-  detail: string;
+type TaskItem = NoteItem & {
+  timeframe?: string;
 };
 
 export default function Conversation({ onBack }: { onBack?: () => void }) {
-  const [messages, setMessages] = useState<Message[]>([]);
   const [hasStarted, setHasStarted] = useState(false);
   const [micAllowed, setMicAllowed] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [debugEvents, setDebugEvents] = useState<DebugEvent[]>([]);
-  const [showDebug, setShowDebug] = useState(true);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const log = (type: string, detail: string) => {
-    const time = new Date().toLocaleTimeString();
-    console.log(`[${time}] ${type}: ${detail}`);
-    setDebugEvents((prev) => [...prev.slice(-30), { time, type, detail }]);
-  };
+  // Live lists
+  const [issues, setIssues] = useState<NoteItem[]>([]);
+  const [goals, setGoals] = useState<NoteItem[]>([]);
+  const [tasks, setTasks] = useState<TaskItem[]>([]);
+  const [lastAdded, setLastAdded] = useState<string | null>(null);
+
+  // Flash animation for newly added items
+  useEffect(() => {
+    if (lastAdded) {
+      const t = setTimeout(() => setLastAdded(null), 1500);
+      return () => clearTimeout(t);
+    }
+  }, [lastAdded]);
 
   const conversation = useConversation({
-    onConnect: ({ conversationId }: { conversationId: string }) => {
-      log("CONNECT", `Connected. ID: ${conversationId}`);
-      setError(null);
-    },
+    onConnect: () => setError(null),
     onDisconnect: (details: DisconnectionDetails) => {
-      log("DISCONNECT", `Reason: ${details.reason}${
-        details.reason === "error" ? ` — ${details.message}` : ""
-      }`);
       if (details.reason === "error") {
         setError(`Disconnected: ${details.message}`);
       }
     },
-    onMessage: (payload: { message: string; source: string; role: string }) => {
-      log("MESSAGE", `[${payload.role || payload.source}] ${payload.message.slice(0, 80)}...`);
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: payload.role === "agent" || payload.source === "ai" ? "agent" : "user",
-          text: payload.message,
-          timestamp: Date.now(),
-        },
-      ]);
-    },
-    onError: (message: string, context?: unknown) => {
-      log("ERROR", `${message} ${context ? JSON.stringify(context).slice(0, 200) : ""}`);
-      setError(message);
-    },
-    onStatusChange: ({ status }: { status: Status }) => {
-      log("STATUS", status);
-    },
-    onModeChange: ({ mode }: { mode: Mode }) => {
-      log("MODE", mode);
-    },
-    onDebug: (info: unknown) => {
-      log("DEBUG", JSON.stringify(info).slice(0, 200));
-    },
+    onMessage: () => {},
+    onError: (message: string) => setError(message),
+    onStatusChange: (_payload: { status: Status }) => {},
+    onModeChange: (_payload: { mode: Mode }) => {},
   });
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
 
   const startConversation = useCallback(async () => {
     setError(null);
-    log("ACTION", "Requesting microphone...");
-
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       setMicAllowed(true);
-      log("ACTION", `Mic granted. Tracks: ${stream.getAudioTracks().length}, active: ${stream.active}`);
+      stream; // consumed by ElevenLabs internally
 
       const agentId = process.env.NEXT_PUBLIC_ELEVENLABS_AGENT_ID;
       if (!agentId || agentId === "your-agent-id-here") {
-        setError("Agent ID not configured. Set NEXT_PUBLIC_ELEVENLABS_AGENT_ID in .env.local");
+        setError("Agent ID not configured.");
         return;
       }
 
-      log("ACTION", `Starting session with agent ${agentId}, connectionType: websocket`);
-
-      const conversationId = await conversation.startSession({
+      await conversation.startSession({
         agentId,
         connectionType: "websocket",
+        clientTools: {
+          note_issue: async (params: { issue: string }) => {
+            const item: NoteItem = {
+              id: crypto.randomUUID(),
+              text: params.issue,
+              addedAt: Date.now(),
+            };
+            setIssues((prev) => [...prev, item]);
+            setLastAdded(item.id);
+            return "Noted.";
+          },
+          note_goal: async (params: { goal: string }) => {
+            const item: NoteItem = {
+              id: crypto.randomUUID(),
+              text: params.goal,
+              addedAt: Date.now(),
+            };
+            setGoals((prev) => [...prev, item]);
+            setLastAdded(item.id);
+            return "Noted.";
+          },
+          note_task: async (params: { task: string; timeframe?: string }) => {
+            const item: TaskItem = {
+              id: crypto.randomUUID(),
+              text: params.task,
+              timeframe: params.timeframe,
+              addedAt: Date.now(),
+            };
+            setTasks((prev) => [...prev, item]);
+            setLastAdded(item.id);
+            return "Noted.";
+          },
+        },
       });
 
-      log("ACTION", `startSession resolved. Conversation ID: ${conversationId}`);
       setHasStarted(true);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      log("ERROR", `startSession failed: ${msg}`);
       setError(msg);
       if (msg.toLowerCase().includes("permission") || msg.toLowerCase().includes("not allowed")) {
         setMicAllowed(false);
@@ -109,40 +108,41 @@ export default function Conversation({ onBack }: { onBack?: () => void }) {
   }, [conversation]);
 
   const endConversation = useCallback(async () => {
-    log("ACTION", "Ending session...");
     try {
       await conversation.endSession();
-    } catch (err) {
-      log("ERROR", `endSession failed: ${err}`);
+    } catch {
+      // ignore
     }
     setHasStarted(false);
   }, [conversation]);
 
-  // Pre-conversation: landing screen
+  const totalItems = issues.length + goals.length + tasks.length;
+
+  // ── Pre-conversation landing ──
   if (!hasStarted) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[100dvh] bg-bg px-6 text-center relative">
-        {onBack && (
-          <button
-            onClick={onBack}
-            className="absolute top-6 left-6 text-text-soft text-xl px-2 py-1 hover:text-text transition-colors"
-          >
-            &#8592;
-          </button>
-        )}
+      <div className="min-h-[100dvh] bg-bg flex justify-center items-start md:items-center md:py-12 md:px-4">
+        <div className="w-full max-w-[480px] min-h-[100dvh] md:min-h-0 bg-card md:rounded-3xl md:shadow-xl md:border md:border-border flex flex-col items-center px-6 py-12 relative">
+          {onBack && (
+            <button
+              onClick={onBack}
+              className="absolute top-5 left-5 text-text-soft text-xl px-2 py-1 hover:text-text transition-colors"
+            >
+              &#8592;
+            </button>
+          )}
 
-        <div className="mb-12">
-          <div className="w-20 h-20 rounded-full bg-accent-soft flex items-center justify-center mx-auto mb-6">
-            <span className="text-primary-dark font-display text-3xl">S</span>
+          <div className="mb-10 text-center">
+            <div className="w-20 h-20 rounded-full bg-accent-soft flex items-center justify-center mx-auto mb-6">
+              <span className="text-primary-dark font-display text-3xl">S</span>
+            </div>
+            <h1 className="font-display text-3xl font-semibold text-text mb-3">Meet Sam</h1>
+            <p className="text-text-soft text-lg max-w-sm leading-relaxed">
+              Your coaching companion. Talk through what&apos;s on your mind and walk away with a clear plan.
+            </p>
           </div>
-          <h1 className="font-display text-3xl font-semibold text-text mb-3">Meet Sam</h1>
-          <p className="text-text-soft text-lg max-w-sm leading-relaxed">
-            Your coaching companion. Talk through what&apos;s on your mind and walk away with a clear plan.
-          </p>
-        </div>
 
-        <div className="mb-12 max-w-sm w-full">
-          <div className="space-y-4">
+          <div className="mb-10 w-full space-y-4">
             {[
               { step: "1", text: "Share what's on your mind" },
               { step: "2", text: "Sam helps you find clarity" },
@@ -156,175 +156,203 @@ export default function Conversation({ onBack }: { onBack?: () => void }) {
               </div>
             ))}
           </div>
-        </div>
 
-        <button
-          onClick={startConversation}
-          className="w-full max-w-sm h-14 bg-primary text-white rounded-2xl text-lg font-semibold
-                     hover:bg-primary-dark active:scale-[0.98] transition-all shadow-lg shadow-primary/20"
-        >
-          Talk to Sam
-        </button>
+          <button
+            onClick={startConversation}
+            className="w-full h-14 bg-primary text-white rounded-2xl text-lg font-semibold
+                       hover:bg-primary-dark active:scale-[0.98] transition-all shadow-lg shadow-primary/20"
+          >
+            Talk to Sam
+          </button>
 
-        {micAllowed === false && (
-          <p className="mt-4 text-sm text-red-600 max-w-sm">
-            Microphone access is required. Please allow microphone access in your browser settings and try again.
+          {micAllowed === false && (
+            <p className="mt-4 text-sm text-red-600 text-center">
+              Microphone access is required. Please allow it in your browser settings.
+            </p>
+          )}
+
+          {error && (
+            <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-xl w-full text-left">
+              <p className="text-sm text-red-700 font-medium">Error</p>
+              <p className="text-xs text-red-600 mt-1">{error}</p>
+            </div>
+          )}
+
+          <p className="mt-6 text-xs text-text-muted text-center">
+            Your conversation is private. Sam uses voice to listen and respond naturally.
           </p>
-        )}
-
-        {error && (
-          <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-xl max-w-sm w-full text-left">
-            <p className="text-sm text-red-700 font-medium">Error</p>
-            <p className="text-xs text-red-600 mt-1">{error}</p>
-          </div>
-        )}
-
-        <p className="mt-6 text-xs text-text-muted max-w-sm">
-          Your conversation is private. Sam uses voice to listen and respond naturally.
-        </p>
-
-        {/* Debug panel on landing too */}
-        {debugEvents.length > 0 && (
-          <DebugPanel events={debugEvents} show={showDebug} onToggle={() => setShowDebug(!showDebug)} />
-        )}
+        </div>
       </div>
     );
   }
 
-  // Active conversation
+  // ── Active conversation ──
   return (
-    <div className="flex flex-col h-[100dvh] bg-bg">
-      {/* Header */}
-      <header className="flex items-center justify-between px-6 py-4 border-b border-border bg-card/80 backdrop-blur-sm">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-accent-soft flex items-center justify-center">
-            <span className="text-primary-dark font-semibold text-lg">S</span>
+    <div className="min-h-[100dvh] bg-bg flex justify-center items-start md:items-center md:py-12 md:px-4">
+      <div className="w-full max-w-[480px] min-h-[100dvh] md:min-h-0 md:max-h-[90vh] bg-card md:rounded-3xl md:shadow-xl md:border md:border-border flex flex-col overflow-hidden">
+        {/* Header */}
+        <header className="flex items-center justify-between px-5 py-3 border-b border-border shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-full bg-accent-soft flex items-center justify-center">
+              <span className="text-primary-dark font-semibold">S</span>
+            </div>
+            <div>
+              <h2 className="font-semibold text-text text-sm">Sam</h2>
+              <StatusIndicator status={conversation.status} isSpeaking={conversation.isSpeaking} />
+            </div>
           </div>
-          <div>
-            <h2 className="font-semibold text-text text-sm">Sam</h2>
-            <StatusIndicator status={conversation.status} isSpeaking={conversation.isSpeaking} />
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowDebug(!showDebug)}
-            className="text-xs text-text-muted hover:text-text px-2 py-1 rounded border border-border"
-          >
-            {showDebug ? "Hide" : "Debug"}
-          </button>
           <button
             onClick={endConversation}
             className="text-sm text-text-muted hover:text-text transition-colors px-3 py-1.5 rounded-lg hover:bg-border/50"
           >
             End
           </button>
-        </div>
-      </header>
+        </header>
 
-      {/* Error banner */}
-      {error && (
-        <div className="px-4 py-2 bg-red-50 border-b border-red-200">
-          <p className="text-xs text-red-600">{error}</p>
-        </div>
-      )}
-
-      {/* Debug panel */}
-      {showDebug && <DebugPanel events={debugEvents} show={showDebug} onToggle={() => setShowDebug(!showDebug)} />}
-
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
-        {messages.length === 0 && conversation.status === "connected" && (
-          <p className="text-center text-text-muted text-sm py-8">
-            Waiting for Sam to speak...
-          </p>
+        {/* Error banner */}
+        {error && (
+          <div className="px-4 py-2 bg-red-50 border-b border-red-200 shrink-0">
+            <p className="text-xs text-red-600">{error}</p>
+          </div>
         )}
-        {messages.map((msg, i) => (
-          <MessageBubble key={i} message={msg} />
-        ))}
-        <div ref={messagesEndRef} />
-      </div>
 
-      {/* Voice indicator */}
-      <div className="px-6 py-8 flex flex-col items-center gap-4 border-t border-border bg-card/50">
-        <VoiceOrb status={conversation.status} isSpeaking={conversation.isSpeaking} />
-        <p className="text-sm text-text-muted">
-          {conversation.isSpeaking
-            ? "Sam is speaking..."
-            : conversation.status === "connected"
-            ? "Listening to you..."
-            : conversation.status === "connecting"
-            ? "Connecting..."
-            : `Status: ${conversation.status}`}
-        </p>
+        {/* Voice orb area */}
+        <div className="py-6 flex flex-col items-center gap-3 shrink-0">
+          <VoiceOrb status={conversation.status} isSpeaking={conversation.isSpeaking} />
+          <p className="text-sm text-text-muted">
+            {conversation.isSpeaking
+              ? "Sam is speaking..."
+              : conversation.status === "connected"
+              ? "Listening to you..."
+              : conversation.status === "connecting"
+              ? "Connecting..."
+              : `Status: ${conversation.status}`}
+          </p>
+        </div>
+
+        {/* Live lists */}
+        <div className="flex-1 overflow-y-auto px-5 pb-6">
+          {totalItems === 0 && conversation.status === "connected" && (
+            <p className="text-center text-text-muted text-sm py-4">
+              As you talk, Sam will note down your issues, goals, and to-dos here.
+            </p>
+          )}
+
+          {issues.length > 0 && (
+            <ListSection
+              title="Issues"
+              emoji="!"
+              color="text-red-500"
+              bgColor="bg-red-50"
+              borderColor="border-red-100"
+              items={issues}
+              lastAdded={lastAdded}
+            />
+          )}
+
+          {goals.length > 0 && (
+            <ListSection
+              title="Goals"
+              emoji="&#9733;"
+              color="text-amber-500"
+              bgColor="bg-amber-50"
+              borderColor="border-amber-100"
+              items={goals}
+              lastAdded={lastAdded}
+            />
+          )}
+
+          {tasks.length > 0 && (
+            <TaskSection tasks={tasks} lastAdded={lastAdded} />
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
-function DebugPanel({
-  events,
-  show,
-  onToggle,
+// ── Sub-components ──
+
+function ListSection({
+  title,
+  emoji,
+  color,
+  bgColor,
+  borderColor,
+  items,
+  lastAdded,
 }: {
-  events: DebugEvent[];
-  show: boolean;
-  onToggle: () => void;
+  title: string;
+  emoji: string;
+  color: string;
+  bgColor: string;
+  borderColor: string;
+  items: NoteItem[];
+  lastAdded: string | null;
 }) {
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const endRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    scrollRef.current?.scrollTo(0, scrollRef.current.scrollHeight);
-  }, [events]);
-
-  if (!show) return null;
+    endRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [items.length]);
 
   return (
-    <div className="w-full max-w-sm mx-auto mt-4">
-      <div className="bg-gray-900 rounded-xl overflow-hidden border border-gray-700">
-        <div className="flex items-center justify-between px-3 py-2 bg-gray-800">
-          <span className="text-xs text-gray-400 font-mono">Debug Log</span>
-          <button onClick={onToggle} className="text-xs text-gray-500 hover:text-gray-300">
-            &#10005;
-          </button>
-        </div>
-        <div ref={scrollRef} className="px-3 py-2 max-h-48 overflow-y-auto font-mono text-[11px] leading-relaxed">
-          {events.map((e, i) => (
-            <div key={i} className="flex gap-2">
-              <span className="text-gray-600 shrink-0">{e.time}</span>
-              <span
-                className={`shrink-0 ${
-                  e.type === "ERROR"
-                    ? "text-red-400"
-                    : e.type === "CONNECT"
-                    ? "text-green-400"
-                    : e.type === "MESSAGE"
-                    ? "text-blue-400"
-                    : "text-gray-400"
-                }`}
-              >
-                {e.type}
-              </span>
-              <span className="text-gray-300 break-all">{e.detail}</span>
-            </div>
-          ))}
-          {events.length === 0 && <span className="text-gray-600">No events yet.</span>}
-        </div>
+    <div className="mb-5">
+      <div className="flex items-center gap-2 mb-2">
+        <span className={`text-sm ${color}`} dangerouslySetInnerHTML={{ __html: emoji }} />
+        <h3 className="text-xs font-semibold text-text-soft uppercase tracking-wider">{title}</h3>
+        <span className="text-xs text-text-muted">({items.length})</span>
+      </div>
+      <div className="space-y-2">
+        {items.map((item) => (
+          <div
+            key={item.id}
+            className={`px-3 py-2.5 rounded-xl text-sm text-text border ${borderColor} ${bgColor} transition-all duration-500 ${
+              lastAdded === item.id ? "animate-slide-in ring-2 ring-primary/30" : ""
+            }`}
+          >
+            {item.text}
+          </div>
+        ))}
+        <div ref={endRef} />
       </div>
     </div>
   );
 }
 
-function MessageBubble({ message }: { message: Message }) {
-  const isUser = message.role === "user";
+function TaskSection({
+  tasks,
+  lastAdded,
+}: {
+  tasks: TaskItem[];
+  lastAdded: string | null;
+}) {
+  const endRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [tasks.length]);
+
   return (
-    <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
-      <div
-        className={`max-w-[80%] px-4 py-3 rounded-2xl text-sm leading-relaxed ${
-          isUser
-            ? "bg-primary text-white rounded-br-sm"
-            : "bg-card border border-border text-text rounded-bl-sm"
-        }`}
-      >
-        {message.text}
+    <div className="mb-5">
+      <div className="flex items-center gap-2 mb-2">
+        <span className="text-sm text-primary">&#10003;</span>
+        <h3 className="text-xs font-semibold text-text-soft uppercase tracking-wider">To-Dos</h3>
+        <span className="text-xs text-text-muted">({tasks.length})</span>
+      </div>
+      <div className="space-y-2">
+        {tasks.map((item) => (
+          <div
+            key={item.id}
+            className={`px-3 py-2.5 rounded-xl text-sm border border-primary/10 bg-primary/5 transition-all duration-500 ${
+              lastAdded === item.id ? "animate-slide-in ring-2 ring-primary/30" : ""
+            }`}
+          >
+            <span className="text-text">{item.text}</span>
+            {item.timeframe && (
+              <span className="ml-2 text-xs text-text-muted">{item.timeframe}</span>
+            )}
+          </div>
+        ))}
+        <div ref={endRef} />
       </div>
     </div>
   );
