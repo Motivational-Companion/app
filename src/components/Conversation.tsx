@@ -34,6 +34,39 @@ export default function Conversation({ onBack }: { onBack?: () => void }) {
   }, [lastAdded]);
 
   const conversation = useConversation({
+    clientTools: {
+      note_issue: async (params: { title: string }) => {
+        const item: NoteItem = {
+          id: crypto.randomUUID(),
+          text: params.title,
+          addedAt: Date.now(),
+        };
+        setIssues((prev) => [...prev, item]);
+        setLastAdded(item.id);
+        return "Noted.";
+      },
+      note_goal: async (params: { title: string }) => {
+        const item: NoteItem = {
+          id: crypto.randomUUID(),
+          text: params.title,
+          addedAt: Date.now(),
+        };
+        setGoals((prev) => [...prev, item]);
+        setLastAdded(item.id);
+        return "Noted.";
+      },
+      note_task: async (params: { title: string; timeframe?: string }) => {
+        const item: TaskItem = {
+          id: crypto.randomUUID(),
+          text: params.title,
+          timeframe: params.timeframe,
+          addedAt: Date.now(),
+        };
+        setTasks((prev) => [...prev, item]);
+        setLastAdded(item.id);
+        return "Noted.";
+      },
+    },
     onConnect: () => setError(null),
     onDisconnect: (details: DisconnectionDetails) => {
       if (details.reason === "error") {
@@ -62,39 +95,6 @@ export default function Conversation({ onBack }: { onBack?: () => void }) {
       await conversation.startSession({
         agentId,
         connectionType: "websocket",
-        clientTools: {
-          note_issue: async (params: { issue: string }) => {
-            const item: NoteItem = {
-              id: crypto.randomUUID(),
-              text: params.issue,
-              addedAt: Date.now(),
-            };
-            setIssues((prev) => [...prev, item]);
-            setLastAdded(item.id);
-            return "Noted.";
-          },
-          note_goal: async (params: { goal: string }) => {
-            const item: NoteItem = {
-              id: crypto.randomUUID(),
-              text: params.goal,
-              addedAt: Date.now(),
-            };
-            setGoals((prev) => [...prev, item]);
-            setLastAdded(item.id);
-            return "Noted.";
-          },
-          note_task: async (params: { task: string; timeframe?: string }) => {
-            const item: TaskItem = {
-              id: crypto.randomUUID(),
-              text: params.task,
-              timeframe: params.timeframe,
-              addedAt: Date.now(),
-            };
-            setTasks((prev) => [...prev, item]);
-            setLastAdded(item.id);
-            return "Noted.";
-          },
-        },
       });
 
       setHasStarted(true);

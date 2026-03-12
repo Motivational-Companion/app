@@ -54,7 +54,7 @@ describe("ElevenLabs Agent Connection", () => {
     expect(data.signed_url).toContain("wss://");
   });
 
-  it("agent system prompt contains reflective communication framework", async () => {
+  it("agent system prompt contains accountability coaching framework", async () => {
     const res = await fetch(
       `https://api.elevenlabs.io/v1/convai/agents/${AGENT_ID}`,
       { headers: { "xi-api-key": API_KEY } }
@@ -62,10 +62,11 @@ describe("ElevenLabs Agent Connection", () => {
     const data = await res.json();
     const prompt = data.conversation_config.agent.prompt.prompt;
     expect(prompt).toContain("Sam");
-    expect(prompt).toContain("reflective");
+    expect(prompt).toContain("accountability");
     expect(prompt).toContain("Phase 1");
     expect(prompt).toContain("Phase 4");
-    expect(prompt).toContain("Task Extraction");
+    expect(prompt).toContain("Action Planning");
+    expect(prompt).toContain("note_task");
     expect(prompt).toContain("Writing Rules");
     expect(prompt).toContain("em dashes");
   });
