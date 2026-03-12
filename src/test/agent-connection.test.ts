@@ -66,6 +66,8 @@ describe("ElevenLabs Agent Connection", () => {
     expect(prompt).toContain("Phase 1");
     expect(prompt).toContain("Phase 4");
     expect(prompt).toContain("Task Extraction");
+    expect(prompt).toContain("Writing Rules");
+    expect(prompt).toContain("em dashes");
   });
 
   it("env variable NEXT_PUBLIC_ELEVENLABS_AGENT_ID matches agent", () => {
