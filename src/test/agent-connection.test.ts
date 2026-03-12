@@ -24,13 +24,13 @@ describe("ElevenLabs Agent Connection", () => {
     expect(data.conversation_config.agent.prompt.llm).toBe("claude-sonnet-4-6");
   });
 
-  it("agent has Sarah voice configured", async () => {
+  it("agent has Lily voice configured", async () => {
     const res = await fetch(
       `https://api.elevenlabs.io/v1/convai/agents/${AGENT_ID}`,
       { headers: { "xi-api-key": API_KEY } }
     );
     const data = await res.json();
-    expect(data.conversation_config.tts.voice_id).toBe("EXAVITQu4vr4xnSDxMaL");
+    expect(data.conversation_config.tts.voice_id).toBe("pFZP5JQG7iQjIQuC4Bku");
   });
 
   it("agent has first message set", async () => {

@@ -31,6 +31,7 @@ export default function Onboarding({ onComplete }: Props) {
   });
   const [transitioning, setTransitioning] = useState(false);
   const [direction, setDirection] = useState<"forward" | "back">("forward");
+  const [selectedPlan, setSelectedPlan] = useState<"annual" | "monthly">("annual");
 
   const totalScreens = 13;
   const progress = Math.round((screen / totalScreens) * 100);
@@ -72,19 +73,11 @@ export default function Onboarding({ onComplete }: Props) {
     accountable: "like you need someone in your corner — someone who checks in",
   };
 
-  const screenClass = `flex flex-col min-h-[100dvh] px-6 pb-8 pt-2 transition-all duration-300 ${
-    transitioning
-      ? direction === "forward"
-        ? "opacity-0 translate-x-8"
-        : "opacity-0 -translate-x-8"
-      : "opacity-100 translate-x-0"
-  }`;
-
   // Screen 0: Landing
   if (screen === 0) {
     return (
-      <div className={screenClass}>
-        <div className="flex-1 flex flex-col items-center justify-center text-center">
+      <ScreenShell transitioning={transitioning} direction={direction}>
+        <div className="flex flex-col items-center text-center">
           <div className="w-16 h-16 rounded-full bg-accent-soft flex items-center justify-center mb-6">
             <span className="text-primary-dark font-display text-2xl">S</span>
           </div>
@@ -122,17 +115,17 @@ export default function Onboarding({ onComplete }: Props) {
         >
           Start My Free Session
         </button>
-      </div>
+      </ScreenShell>
     );
   }
 
   // Screen 1: Meet Sam
   if (screen === 1) {
     return (
-      <div className={screenClass}>
+      <ScreenShell transitioning={transitioning} direction={direction}>
         <ProgressBar progress={8} />
         <TopRow onBack={() => goTo(0)} />
-        <div className="flex-1 flex flex-col">
+        <div className="flex flex-col">
           <div className="flex flex-col items-center text-center mb-6">
             <div className="w-20 h-20 rounded-full bg-accent-soft flex items-center justify-center mb-4">
               <span className="text-primary-dark font-display text-3xl">S</span>
@@ -149,8 +142,7 @@ export default function Onboarding({ onComplete }: Props) {
               &ldquo;Think of this like talking to a friend who&apos;s really good at asking the right questions. Everything stays between us.&rdquo;
             </p>
           </div>
-          <div className="flex-1" />
-          <div className="space-y-3">
+          <div className="space-y-3 mt-8">
             <button
               onClick={() => goTo(2)}
               className="w-full h-14 bg-primary text-white rounded-xl text-base font-semibold hover:bg-primary-dark active:scale-[0.98] transition-all"
@@ -165,14 +157,14 @@ export default function Onboarding({ onComplete }: Props) {
             </button>
           </div>
         </div>
-      </div>
+      </ScreenShell>
     );
   }
 
   // Screen 2: What brings you here?
   if (screen === 2) {
     return (
-      <div className={screenClass}>
+      <ScreenShell transitioning={transitioning} direction={direction}>
         <ProgressBar progress={18} />
         <TopRow onBack={() => goTo(1)} />
         <SamBubble text="Let's start simple." />
@@ -210,14 +202,14 @@ export default function Onboarding({ onComplete }: Props) {
             onClick={() => selectSingle("bringYouHere", "accountable", 3)}
           />
         </div>
-      </div>
+      </ScreenShell>
     );
   }
 
   // Screen 3: Reflective listening + what does that look like
   if (screen === 3) {
     return (
-      <div className={screenClass}>
+      <ScreenShell transitioning={transitioning} direction={direction}>
         <ProgressBar progress={28} />
         <TopRow onBack={() => goTo(2)} onSkip={() => goTo(4)} />
         <SamBubble
@@ -243,21 +235,20 @@ export default function Onboarding({ onComplete }: Props) {
             />
           ))}
         </div>
-        <div className="flex-1" />
         <button
           onClick={() => goTo(4)}
-          className="w-full h-14 bg-primary text-white rounded-xl text-base font-semibold hover:bg-primary-dark active:scale-[0.98] transition-all mt-4"
+          className="w-full h-14 bg-primary text-white rounded-xl text-base font-semibold hover:bg-primary-dark active:scale-[0.98] transition-all mt-6"
         >
           Continue
         </button>
-      </div>
+      </ScreenShell>
     );
   }
 
   // Screen 4: Obstacles
   if (screen === 4) {
     return (
-      <div className={screenClass}>
+      <ScreenShell transitioning={transitioning} direction={direction}>
         <ProgressBar progress={36} />
         <TopRow onBack={() => goTo(3)} onSkip={() => goTo(5)} />
         <SamBubble text="That makes total sense. Now I'm curious..." />
@@ -281,21 +272,20 @@ export default function Onboarding({ onComplete }: Props) {
             />
           ))}
         </div>
-        <div className="flex-1" />
         <button
           onClick={() => goTo(5)}
-          className="w-full h-14 bg-primary text-white rounded-xl text-base font-semibold hover:bg-primary-dark active:scale-[0.98] transition-all mt-4"
+          className="w-full h-14 bg-primary text-white rounded-xl text-base font-semibold hover:bg-primary-dark active:scale-[0.98] transition-all mt-6"
         >
           Continue
         </button>
-      </div>
+      </ScreenShell>
     );
   }
 
   // Screen 5: What have you tried
   if (screen === 5) {
     return (
-      <div className={screenClass}>
+      <ScreenShell transitioning={transitioning} direction={direction}>
         <ProgressBar progress={44} />
         <TopRow onBack={() => goTo(4)} onSkip={() => goTo(6)} />
         <SamBubble text="That makes sense. You're not broken — you just don't have a system that works with your brain." />
@@ -321,21 +311,20 @@ export default function Onboarding({ onComplete }: Props) {
             />
           ))}
         </div>
-        <div className="flex-1" />
         <button
           onClick={() => goTo(6)}
-          className="w-full h-14 bg-primary text-white rounded-xl text-base font-semibold hover:bg-primary-dark active:scale-[0.98] transition-all mt-4"
+          className="w-full h-14 bg-primary text-white rounded-xl text-base font-semibold hover:bg-primary-dark active:scale-[0.98] transition-all mt-6"
         >
           Continue
         </button>
-      </div>
+      </ScreenShell>
     );
   }
 
   // Screen 6: Vision question
   if (screen === 6) {
     return (
-      <div className={screenClass}>
+      <ScreenShell transitioning={transitioning} direction={direction}>
         <ProgressBar progress={54} />
         <TopRow onBack={() => goTo(5)} onSkip={() => goTo(7)} />
         <div className="text-center mb-4">
@@ -359,22 +348,21 @@ export default function Onboarding({ onComplete }: Props) {
         <p className="text-xs text-text-muted text-center mt-2">
           This shapes your entire coaching plan — even a sentence helps.
         </p>
-        <div className="flex-1" />
         <button
           onClick={() => goTo(7)}
           disabled={data.vision.trim().length < 5}
-          className="w-full h-14 bg-primary text-white rounded-xl text-base font-semibold hover:bg-primary-dark active:scale-[0.98] transition-all mt-4 disabled:bg-border disabled:text-text-muted disabled:cursor-default disabled:transform-none"
+          className="w-full h-14 bg-primary text-white rounded-xl text-base font-semibold hover:bg-primary-dark active:scale-[0.98] transition-all mt-6 disabled:bg-border disabled:text-text-muted disabled:cursor-default disabled:transform-none"
         >
           Continue
         </button>
-      </div>
+      </ScreenShell>
     );
   }
 
   // Screen 7: AI Synthesis
   if (screen === 7) {
     return (
-      <div className={screenClass}>
+      <ScreenShell transitioning={transitioning} direction={direction}>
         <ProgressBar progress={64} />
         <TopRow onBack={() => goTo(6)} />
         <SamBubble
@@ -391,21 +379,20 @@ export default function Onboarding({ onComplete }: Props) {
         <div className="mt-3">
           <SamBubble text={<>I think I can help. <strong>A few quick preferences</strong> and I&apos;ll build your plan.</>} />
         </div>
-        <div className="flex-1" />
         <button
           onClick={() => goTo(8)}
-          className="w-full h-14 bg-primary text-white rounded-xl text-base font-semibold hover:bg-primary-dark active:scale-[0.98] transition-all mt-4"
+          className="w-full h-14 bg-primary text-white rounded-xl text-base font-semibold hover:bg-primary-dark active:scale-[0.98] transition-all mt-8"
         >
           Build my plan
         </button>
-      </div>
+      </ScreenShell>
     );
   }
 
   // Screen 8: Check-in time
   if (screen === 8) {
     return (
-      <div className={screenClass}>
+      <ScreenShell transitioning={transitioning} direction={direction}>
         <ProgressBar progress={74} />
         <TopRow onBack={() => goTo(7)} onSkip={() => goTo(9)} />
         <p className="text-xs font-semibold uppercase tracking-widest text-primary-light mb-1">
@@ -440,14 +427,14 @@ export default function Onboarding({ onComplete }: Props) {
             onClick={() => selectSingle("checkinTime", "evening", 9)}
           />
         </div>
-      </div>
+      </ScreenShell>
     );
   }
 
   // Screen 9: Priority area
   if (screen === 9) {
     return (
-      <div className={screenClass}>
+      <ScreenShell transitioning={transitioning} direction={direction}>
         <ProgressBar progress={82} />
         <TopRow onBack={() => goTo(8)} onSkip={() => goTo(10)} />
         <p className="text-xs font-semibold uppercase tracking-widest text-primary-light mb-1">
@@ -489,14 +476,14 @@ export default function Onboarding({ onComplete }: Props) {
             onClick={() => selectSingle("priorityArea", "relationships", 10)}
           />
         </div>
-      </div>
+      </ScreenShell>
     );
   }
 
   // Screen 10: Coaching style
   if (screen === 10) {
     return (
-      <div className={screenClass}>
+      <ScreenShell transitioning={transitioning} direction={direction}>
         <ProgressBar progress={90} />
         <TopRow onBack={() => goTo(9)} onSkip={() => goTo(11)} />
         <p className="text-xs font-semibold uppercase tracking-widest text-primary-light mb-1">
@@ -528,14 +515,14 @@ export default function Onboarding({ onComplete }: Props) {
             onClick={() => selectSingle("coachingStyle", "thoughtful", 11)}
           />
         </div>
-      </div>
+      </ScreenShell>
     );
   }
 
   // Screen 11: Plan reveal
   if (screen === 11) {
     return (
-      <div className={screenClass}>
+      <ScreenShell transitioning={transitioning} direction={direction}>
         <ProgressBar progress={96} />
         <div className="text-center mb-4">
           <div className="w-14 h-14 rounded-full bg-success/10 flex items-center justify-center mx-auto mb-3">
@@ -568,7 +555,7 @@ export default function Onboarding({ onComplete }: Props) {
         </div>
 
         {/* First action */}
-        <div className="bg-card border border-border rounded-xl p-3 mb-4">
+        <div className="bg-card border border-border rounded-xl p-3 mb-6">
           <p className="text-xs font-semibold text-success mb-1">&#9889; YOUR FIRST ACTION</p>
           <p className="text-sm text-text">
             Tomorrow morning: open the app and do your first brain dump. <strong>Just 2 minutes.</strong>
@@ -584,15 +571,14 @@ export default function Onboarding({ onComplete }: Props) {
         <p className="text-xs text-text-muted text-center mt-2">
           Free for 7 days &middot; Cancel anytime
         </p>
-      </div>
+      </ScreenShell>
     );
   }
 
   // Screen 12: Paywall
   if (screen === 12) {
-    const [selectedPlan, setSelectedPlan] = useState<"annual" | "monthly">("annual");
     return (
-      <div className={screenClass}>
+      <ScreenShell transitioning={transitioning} direction={direction}>
         <ProgressBar progress={100} />
         <div className="text-center mb-4">
           <h2 className="font-display text-xl font-medium text-text">
@@ -666,7 +652,6 @@ export default function Onboarding({ onComplete }: Props) {
           ))}
         </div>
 
-        <div className="flex-1" />
         <button
           onClick={() => onComplete(data)}
           className="w-full h-14 bg-primary text-white rounded-xl text-base font-semibold hover:bg-primary-dark active:scale-[0.98] transition-all"
@@ -685,7 +670,7 @@ export default function Onboarding({ onComplete }: Props) {
             )
           )}
         </div>
-      </div>
+      </ScreenShell>
     );
   }
 
@@ -693,6 +678,32 @@ export default function Onboarding({ onComplete }: Props) {
 }
 
 // Reusable components
+
+function ScreenShell({
+  transitioning,
+  direction,
+  children,
+}: {
+  transitioning: boolean;
+  direction: "forward" | "back";
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="min-h-[100dvh] bg-bg flex justify-center items-start md:items-center md:py-12 md:px-4">
+      <div
+        className={`w-full max-w-[480px] flex flex-col px-6 pb-8 pt-4 md:rounded-3xl md:shadow-xl md:border md:border-border transition-all duration-300 ${
+          transitioning
+            ? direction === "forward"
+              ? "opacity-0 translate-x-8"
+              : "opacity-0 -translate-x-8"
+            : "opacity-100 translate-x-0"
+        }`}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
 
 function ProgressBar({ progress }: { progress: number }) {
   return (
