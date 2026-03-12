@@ -2,6 +2,38 @@
 
 import { useState, useCallback } from "react";
 
+async function startCheckout(plan: "annual" | "monthly"): Promise<string> {
+  const priceId =
+    plan === "annual"
+      ? process.env.NEXT_PUBLIC_STRIPE_ANNUAL_PRICE_ID
+      : process.env.NEXT_PUBLIC_STRIPE_MONTHLY_PRICE_ID;
+
+  if (!priceId) {
+    throw new Error(
+      `Stripe price identifier for the ${plan} plan is not configured. Please set the corresponding environment variable.`
+    );
+  }
+
+  const response = await fetch("/api/stripe/checkout", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ priceId, plan }),
+  });
+
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || "Failed to create checkout session.");
+  }
+
+  const { url } = await response.json();
+
+  if (!url) {
+    throw new Error("No checkout URL returned from server.");
+  }
+
+  return url;
+}
+
 type OnboardingData = {
   bringYouHere: string;
   lookLike: string[];
@@ -32,6 +64,8 @@ export default function Onboarding({ onComplete }: Props) {
   const [transitioning, setTransitioning] = useState(false);
   const [direction, setDirection] = useState<"forward" | "back">("forward");
   const [selectedPlan, setSelectedPlan] = useState<"annual" | "monthly">("annual");
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
 
   const totalScreens = 13;
   const progress = Math.round((screen / totalScreens) * 100);
@@ -652,11 +686,32 @@ export default function Onboarding({ onComplete }: Props) {
           ))}
         </div>
 
+        {checkoutError && (
+          <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 mb-3">
+            <p className="text-sm text-red-700">{checkoutError}</p>
+          </div>
+        )}
+
         <button
-          onClick={() => onComplete(data)}
-          className="w-full h-14 bg-primary text-white rounded-xl text-base font-semibold hover:bg-primary-dark active:scale-[0.98] transition-all"
+          onClick={async () => {
+            setCheckoutLoading(true);
+            setCheckoutError(null);
+            try {
+              const url = await startCheckout(selectedPlan);
+              window.location.href = url;
+            } catch (error) {
+              const message =
+                error instanceof Error
+                  ? error.message
+                  : "Something went wrong. Please try again.";
+              setCheckoutError(message);
+              setCheckoutLoading(false);
+            }
+          }}
+          disabled={checkoutLoading}
+          className="w-full h-14 bg-primary text-white rounded-xl text-base font-semibold hover:bg-primary-dark active:scale-[0.98] transition-all disabled:opacity-60 disabled:cursor-default disabled:transform-none"
         >
-          Start Free Trial
+          {checkoutLoading ? "Redirecting to checkout..." : "Start Free Trial"}
         </button>
         <p className="text-xs text-text-muted text-center mt-2">
           No charge for 7 days. Cancel in settings anytime.
