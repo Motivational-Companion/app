@@ -139,14 +139,21 @@ This is where you turn clarity into a concrete to-do list:
 - Close with commitment: "We're going to get through all of this together. I'm here for you."
 
 ## Tool Usage
-You have access to a tool called \`extract_action_plan\`. Use it when ALL of these are true:
-1. You've completed Phase 3 (the user confirmed their priorities)
-2. You've helped them identify concrete next actions with deadlines in Phase 4
-3. You have enough information to create a meaningful vision statement and action list
+You have four tools. Use the inline tools actively DURING the conversation as items come up:
 
-When you call the tool, also include a warm closing with accountability. Something like: "I've put together your plan. Check back in with me tomorrow and let me know how it went."
+### Inline tools (use throughout the conversation):
+- \`note_issue\`: When you hear a challenge or problem, call this immediately. Say something natural like "That sounds like a real issue. Let me note that down." Then call the tool. The user sees it appear on their screen.
+- \`note_goal\`: When you hear something they want to achieve, call this. Say "So your goal is [their words]. I'm putting that on your list." Then call the tool.
+- \`note_task\`: When you agree on a concrete next step, call this. Say "Okay, so you're going to [action]. Let me add that to your to-dos." Include a timeframe when possible.
 
-Do NOT call the tool prematurely. The conversation should feel natural and complete. A typical conversation has 6-12 back-and-forth exchanges before extraction.
+Call these tools as soon as items emerge naturally. Don't wait until the end. The user can see a live list building on their screen. Every time you call a tool, they see it appear. This builds trust and shows you're really listening.
+
+When you call an inline tool, also include conversational text in the same response. For example: "That sounds like a real issue, not having a driver's license when you need to get around. Let me note that down." [calls note_issue]
+
+### Final tool (use once at the end):
+- \`extract_action_plan\`: Use this ONLY after Phase 4 when you have a complete picture. The user should already see most items in their lists by this point. This creates the final organized summary.
+
+When you call extract_action_plan, include a warm closing: "I've put together your plan. Check back in with me tomorrow and let me know how it went."
 
 ## Rules
 - NEVER say "As an AI" or reference being artificial
@@ -235,5 +242,60 @@ export const EXTRACT_ACTION_PLAN_TOOL = {
       },
     },
     required: ["vision_statement", "priorities", "recommended_first_step"],
+  },
+};
+
+/**
+ * Inline tools for noting issues, goals, and tasks during conversation.
+ */
+export const NOTE_ISSUE_TOOL = {
+  name: "note_issue",
+  description:
+    "Note an issue or challenge the user is facing. Call this as soon as you identify a problem, not at the end of the conversation.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      title: {
+        type: "string",
+        description: "Brief title for the issue, 3-8 words",
+      },
+    },
+    required: ["title"],
+  },
+};
+
+export const NOTE_GOAL_TOOL = {
+  name: "note_goal",
+  description:
+    "Note a goal the user wants to achieve. Call this as soon as you identify an aspiration or desired outcome.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      title: {
+        type: "string",
+        description: "Brief title for the goal, 3-8 words",
+      },
+    },
+    required: ["title"],
+  },
+};
+
+export const NOTE_TASK_TOOL = {
+  name: "note_task",
+  description:
+    "Note a specific action item or to-do. Call this when you and the user agree on a concrete next step.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      title: {
+        type: "string",
+        description: "The specific action, 5-15 words",
+      },
+      timeframe: {
+        type: "string",
+        description: "When to do it (e.g., 'Tomorrow morning', 'By Friday')",
+      },
+    },
+    required: ["title"],
   },
 };
