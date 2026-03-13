@@ -1,8 +1,16 @@
 "use client";
 
 import { useState, useCallback } from "react";
+import type { OnboardingData } from "@/lib/types";
 
-async function startCheckout(plan: "annual" | "monthly"): Promise<string> {
+async function startCheckout(plan: "annual" | "monthly", data: OnboardingData): Promise<string> {
+  // Save quiz data to localStorage so it survives the Stripe redirect
+  try {
+    localStorage.setItem("onboarding_data", JSON.stringify(data));
+  } catch {
+    // localStorage unavailable — continue without saving
+  }
+
   const priceId =
     plan === "annual"
       ? process.env.NEXT_PUBLIC_STRIPE_ANNUAL_PRICE_ID
@@ -33,17 +41,6 @@ async function startCheckout(plan: "annual" | "monthly"): Promise<string> {
 
   return url;
 }
-
-type OnboardingData = {
-  bringYouHere: string;
-  lookLike: string[];
-  obstacles: string[];
-  triedBefore: string[];
-  vision: string;
-  checkinTime: string;
-  priorityArea: string;
-  coachingStyle: string;
-};
 
 type Props = {
   onComplete: (data: OnboardingData) => void;
@@ -697,7 +694,7 @@ export default function Onboarding({ onComplete }: Props) {
             setCheckoutLoading(true);
             setCheckoutError(null);
             try {
-              const url = await startCheckout(selectedPlan);
+              const url = await startCheckout(selectedPlan, data);
               window.location.href = url;
             } catch (error) {
               const message =

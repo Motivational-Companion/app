@@ -1,3 +1,14 @@
+export type OnboardingData = {
+  bringYouHere: string;
+  lookLike: string[];
+  obstacles: string[];
+  triedBefore: string[];
+  vision: string;
+  checkinTime: string;
+  priorityArea: string;
+  coachingStyle: string;
+};
+
 export type ActionPlan = {
   vision_statement: string;
   priorities: {

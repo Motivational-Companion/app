@@ -12,8 +12,63 @@ const anthropic = new Anthropic();
 
 const NOTE_TOOLS = new Set(["note_issue", "note_goal", "note_task"]);
 
+function buildOnboardingContext(ctx: Record<string, unknown>): string {
+  const parts: string[] = [];
+
+  if (ctx.bringYouHere) {
+    const labels: Record<string, string> = {
+      overwhelmed: "feeling overwhelmed",
+      stuck: "feeling stuck",
+      clarity: "seeking clarity",
+      accountable: "wanting accountability",
+    };
+    parts.push(`They came here because they're ${labels[ctx.bringYouHere as string] || ctx.bringYouHere}.`);
+  }
+
+  if (Array.isArray(ctx.lookLike) && ctx.lookLike.length > 0) {
+    parts.push(`What that looks like for them: ${ctx.lookLike.join(", ")}.`);
+  }
+
+  if (Array.isArray(ctx.obstacles) && ctx.obstacles.length > 0) {
+    parts.push(`Their obstacles: ${ctx.obstacles.join(", ")}.`);
+  }
+
+  if (Array.isArray(ctx.triedBefore) && ctx.triedBefore.length > 0) {
+    parts.push(`They've tried: ${ctx.triedBefore.join(", ")}.`);
+  }
+
+  if (ctx.vision) {
+    parts.push(`Their 90-day vision: "${ctx.vision}"`);
+  }
+
+  if (ctx.priorityArea) {
+    const areas: Record<string, string> = {
+      career: "career and work",
+      health: "health and wellbeing",
+      growth: "personal growth",
+      relationships: "relationships and family",
+    };
+    parts.push(`Priority area: ${areas[ctx.priorityArea as string] || ctx.priorityArea}.`);
+  }
+
+  if (ctx.coachingStyle) {
+    const styles: Record<string, string> = {
+      warm: "warm and encouraging",
+      direct: "direct and no-nonsense",
+      thoughtful: "thoughtful and strategic",
+    };
+    parts.push(`Preferred coaching style: ${styles[ctx.coachingStyle as string] || ctx.coachingStyle}.`);
+  }
+
+  if (ctx.checkinTime) {
+    parts.push(`Preferred check-in time: ${ctx.checkinTime}.`);
+  }
+
+  return parts.join(" ");
+}
+
 export async function POST(req: Request) {
-  const { messages } = await req.json();
+  const { messages, onboardingContext } = await req.json();
 
   if (!process.env.ANTHROPIC_API_KEY) {
     return Response.json(
@@ -59,10 +114,19 @@ export async function POST(req: Request) {
         // and let Claude continue talking
         let maxRounds = 5;
         while (maxRounds-- > 0) {
+          // Build system prompt, optionally with onboarding context
+          let systemPrompt = SAM_TEXT_SYSTEM_PROMPT;
+          if (onboardingContext) {
+            const context = buildOnboardingContext(onboardingContext);
+            if (context) {
+              systemPrompt += `\n\n## User Context (from onboarding quiz)\nThe user already shared the following before this conversation. Use this to personalize your approach, but don't repeat it back to them all at once. Weave it in naturally.\n${context}`;
+            }
+          }
+
           const stream = anthropic.messages.stream({
             model: "claude-sonnet-4-6",
             max_tokens: 1024,
-            system: SAM_TEXT_SYSTEM_PROMPT,
+            system: systemPrompt,
             messages: conversationMessages,
             tools: allTools,
           });

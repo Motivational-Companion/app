@@ -1,16 +1,17 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import type { ChatMessage, ActionPlan } from "@/lib/types";
+import type { ChatMessage, ActionPlan, OnboardingData } from "@/lib/types";
 import { SAM_FIRST_MESSAGE } from "@/lib/sam-prompt";
 import LiveLists, { type NoteItem } from "@/components/LiveLists";
 
 type Props = {
   onBack?: () => void;
   onPlanReady: (plan: ActionPlan) => void;
+  onboardingData?: OnboardingData | null;
 };
 
-export default function TextConversation({ onBack, onPlanReady }: Props) {
+export default function TextConversation({ onBack, onPlanReady, onboardingData }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([
     { role: "assistant", content: SAM_FIRST_MESSAGE },
   ]);
@@ -94,7 +95,10 @@ export default function TextConversation({ onBack, onPlanReady }: Props) {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: updatedMessages }),
+        body: JSON.stringify({
+          messages: updatedMessages,
+          ...(onboardingData ? { onboardingContext: onboardingData } : {}),
+        }),
       });
 
       if (!res.ok) {
@@ -167,7 +171,7 @@ export default function TextConversation({ onBack, onPlanReady }: Props) {
     } finally {
       setIsStreaming(false);
     }
-  }, [input, messages, isStreaming, onPlanReady, handleNote]);
+  }, [input, messages, isStreaming, onPlanReady, handleNote, onboardingData]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {

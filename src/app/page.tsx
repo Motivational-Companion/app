@@ -1,18 +1,40 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Onboarding from "@/components/Onboarding";
 import Conversation from "@/components/Conversation";
 import TextConversation from "@/components/TextConversation";
 import Processing from "@/components/Processing";
 import Results from "@/components/Results";
-import type { ActionPlan } from "@/lib/types";
+import type { ActionPlan, OnboardingData } from "@/lib/types";
 
 type Mode = "hub" | "conversation" | "textChat" | "onboarding" | "processing" | "results";
+
+function loadOnboardingData(): OnboardingData | null {
+  try {
+    const stored = localStorage.getItem("onboarding_data");
+    if (stored) return JSON.parse(stored);
+  } catch {
+    // ignore
+  }
+  return null;
+}
 
 export default function Home() {
   const [mode, setMode] = useState<Mode>("hub");
   const [actionPlan, setActionPlan] = useState<ActionPlan | null>(null);
+  const [onboardingData, setOnboardingData] = useState<OnboardingData | null>(null);
+
+  // Check URL params on mount — handle post-checkout redirect
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("start") === "chat") {
+      setOnboardingData(loadOnboardingData());
+      setMode("textChat");
+      // Clean up the URL
+      window.history.replaceState({}, "", "/");
+    }
+  }, []);
 
   const handlePlanReady = (plan: ActionPlan) => {
     setActionPlan(plan);
@@ -21,7 +43,13 @@ export default function Home() {
 
   const handleStartOver = () => {
     setActionPlan(null);
+    setOnboardingData(null);
     setMode("hub");
+  };
+
+  const handleOnboardingComplete = (data: OnboardingData) => {
+    setOnboardingData(data);
+    setMode("textChat");
   };
 
   if (mode === "conversation") {
@@ -33,12 +61,13 @@ export default function Home() {
       <TextConversation
         onBack={() => setMode("hub")}
         onPlanReady={handlePlanReady}
+        onboardingData={onboardingData}
       />
     );
   }
 
   if (mode === "onboarding") {
-    return <Onboarding onComplete={() => setMode("textChat")} />;
+    return <Onboarding onComplete={handleOnboardingComplete} />;
   }
 
   if (mode === "processing") {
