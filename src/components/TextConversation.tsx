@@ -2,22 +2,34 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import type { ChatMessage, ActionPlan, OnboardingData } from "@/lib/types";
-import { SAM_FIRST_MESSAGE } from "@/lib/sam-prompt";
+import { SAM_FIRST_MESSAGE, SAM_CHECKIN_FIRST_MESSAGE } from "@/lib/sam-prompt";
 import LiveLists, { type NoteItem } from "@/components/LiveLists";
+import { useAuth } from "@/lib/supabase/useAuth";
+import {
+  createConversation,
+  saveMessage,
+  endConversation,
+  saveTasks,
+  saveActionPlan,
+  loadActiveTasks,
+} from "@/lib/supabase/data";
 
 type Props = {
   onBack?: () => void;
   onPlanReady: (plan: ActionPlan) => void;
   onboardingData?: OnboardingData | null;
+  chatMode?: "chat" | "checkin";
 };
 
-export default function TextConversation({ onBack, onPlanReady, onboardingData }: Props) {
+export default function TextConversation({ onBack, onPlanReady, onboardingData, chatMode = "chat" }: Props) {
+  const firstMessage = chatMode === "checkin" ? SAM_CHECKIN_FIRST_MESSAGE : SAM_FIRST_MESSAGE;
   const [messages, setMessages] = useState<ChatMessage[]>([
-    { role: "assistant", content: SAM_FIRST_MESSAGE },
+    { role: "assistant", content: firstMessage },
   ]);
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [taskContext, setTaskContext] = useState<string | null>(null);
 
   // Live lists
   const [issues, setIssues] = useState<NoteItem[]>([]);
@@ -27,6 +39,41 @@ export default function TextConversation({ onBack, onPlanReady, onboardingData }
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // ── Supabase persistence (invisible to user) ──
+  const { user, supabase } = useAuth();
+  const conversationIdRef = useRef<string | null>(null);
+
+  // Create a conversation record on mount when authenticated
+  useEffect(() => {
+    if (user && supabase && !conversationIdRef.current) {
+      createConversation(supabase, user.id, "text").then((id) => {
+        conversationIdRef.current = id;
+        // Save the initial assistant greeting
+        if (id) {
+          saveMessage(supabase, id, "assistant", firstMessage);
+        }
+      });
+    }
+  }, [user, supabase, firstMessage]);
+
+  // Load active tasks for check-in mode context
+  useEffect(() => {
+    if (chatMode === "checkin" && user && supabase) {
+      loadActiveTasks(supabase, user.id).then((result) => {
+        const lines: string[] = [];
+        for (const item of result.tasks) {
+          lines.push(`- ${item.text}${item.timeframe ? ` (${item.timeframe})` : ""}`);
+        }
+        for (const item of result.goals) {
+          lines.push(`- Goal: ${item.text}`);
+        }
+        if (lines.length > 0) {
+          setTaskContext(lines.join("\n"));
+        }
+      });
+    }
+  }, [chatMode, user, supabase]);
 
   const getListSetter = (key: "issues" | "goals" | "tasks") =>
     key === "issues" ? setIssues : key === "goals" ? setGoals : setTasks;
@@ -91,6 +138,11 @@ export default function TextConversation({ onBack, onPlanReady, onboardingData }
     setMessages(updatedMessages);
     setIsStreaming(true);
 
+    // Persist user message (fire-and-forget)
+    if (user && supabase && conversationIdRef.current) {
+      saveMessage(supabase, conversationIdRef.current, "user", text);
+    }
+
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
@@ -98,6 +150,8 @@ export default function TextConversation({ onBack, onPlanReady, onboardingData }
         body: JSON.stringify({
           messages: updatedMessages,
           ...(onboardingData ? { onboardingContext: onboardingData } : {}),
+          ...(chatMode === "checkin" ? { mode: "checkin" } : {}),
+          ...(taskContext ? { taskContext } : {}),
         }),
       });
 
@@ -156,7 +210,19 @@ export default function TextConversation({ onBack, onPlanReady, onboardingData }
         }
       }
 
+      // Persist assistant message (fire-and-forget)
+      if (user && supabase && conversationIdRef.current && assistantText) {
+        saveMessage(supabase, conversationIdRef.current, "assistant", assistantText);
+      }
+
       if (plan) {
+        // Persist action plan and note items (fire-and-forget)
+        if (user && supabase && conversationIdRef.current) {
+          saveActionPlan(supabase, user.id, conversationIdRef.current, plan);
+          saveTasks(supabase, user.id, "issue", issues);
+          saveTasks(supabase, user.id, "goal", goals);
+          saveTasks(supabase, user.id, "task", tasks);
+        }
         setTimeout(() => onPlanReady(plan!), 2000);
       }
     } catch (err) {
@@ -171,7 +237,7 @@ export default function TextConversation({ onBack, onPlanReady, onboardingData }
     } finally {
       setIsStreaming(false);
     }
-  }, [input, messages, isStreaming, onPlanReady, handleNote, onboardingData]);
+  }, [input, messages, isStreaming, onPlanReady, handleNote, onboardingData, user, supabase, issues, goals, tasks]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -190,7 +256,12 @@ export default function TextConversation({ onBack, onPlanReady, onboardingData }
           <div className="flex items-center gap-3">
             {onBack && (
               <button
-                onClick={onBack}
+                onClick={() => {
+                  if (user && supabase && conversationIdRef.current) {
+                    endConversation(supabase, conversationIdRef.current);
+                  }
+                  onBack();
+                }}
                 className="text-text-soft text-xl px-1 py-1 mr-1"
               >
                 &#8592;

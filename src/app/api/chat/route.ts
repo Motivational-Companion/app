@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import {
   SAM_TEXT_SYSTEM_PROMPT,
+  SAM_CHECKIN_SYSTEM_PROMPT,
   SAM_FIRST_MESSAGE,
   EXTRACT_ACTION_PLAN_TOOL,
   NOTE_ISSUE_TOOL,
@@ -68,7 +69,9 @@ function buildOnboardingContext(ctx: Record<string, unknown>): string {
 }
 
 export async function POST(req: Request) {
-  const { messages, onboardingContext } = await req.json();
+  const { messages, onboardingContext, mode, taskContext } = await req.json();
+
+  const chatMode: "chat" | "checkin" = mode === "checkin" ? "checkin" : "chat";
 
   if (!process.env.ANTHROPIC_API_KEY) {
     return Response.json(
@@ -114,13 +117,20 @@ export async function POST(req: Request) {
         // and let Claude continue talking
         let maxRounds = 5;
         while (maxRounds-- > 0) {
-          // Build system prompt, optionally with onboarding context
-          let systemPrompt = SAM_TEXT_SYSTEM_PROMPT;
+          // Build system prompt based on mode
+          let systemPrompt = chatMode === "checkin"
+            ? SAM_CHECKIN_SYSTEM_PROMPT
+            : SAM_TEXT_SYSTEM_PROMPT;
+
           if (onboardingContext) {
             const context = buildOnboardingContext(onboardingContext);
             if (context) {
               systemPrompt += `\n\n## User Context (from onboarding quiz)\nThe user already shared the following before this conversation. Use this to personalize your approach, but don't repeat it back to them all at once. Weave it in naturally.\n${context}`;
             }
+          }
+
+          if (taskContext) {
+            systemPrompt += `\n\n## Current Tasks\nThese are the user's active tasks from previous conversations. Reference them during the check-in to ask what got done and what didn't.\n${taskContext}`;
           }
 
           const stream = anthropic.messages.stream({

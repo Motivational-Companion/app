@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { AnalyticsProvider } from "@/lib/analytics";
+import { MetaPixel } from "@/lib/meta-pixel";
 
 export const metadata: Metadata = {
   title: "Motivation Companion",
@@ -20,7 +22,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className="antialiased">{children}</body>
+      <body className="antialiased">
+        <AnalyticsProvider>{children}</AnalyticsProvider>
+        <MetaPixel />
+      </body>
     </html>
   );
 }

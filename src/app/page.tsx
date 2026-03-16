@@ -7,11 +7,12 @@ import TextConversation from "@/components/TextConversation";
 import Processing from "@/components/Processing";
 import Results from "@/components/Results";
 import AuthGate from "@/components/AuthGate";
+import Dashboard from "@/components/Dashboard";
 import { useAuth } from "@/lib/supabase/useAuth";
 import { saveOnboardingData } from "@/lib/supabase/data";
 import type { ActionPlan, OnboardingData } from "@/lib/types";
 
-type Mode = "hub" | "auth" | "conversation" | "textChat" | "onboarding" | "processing" | "results";
+type Mode = "hub" | "auth" | "conversation" | "textChat" | "checkin" | "onboarding" | "processing" | "results";
 
 function loadOnboardingData(): OnboardingData | null {
   try {
@@ -91,9 +92,19 @@ export default function Home() {
   if (mode === "textChat") {
     return (
       <TextConversation
-        onBack={() => setMode("hub")}
+        onBack={() => setMode(user ? "hub" : "hub")}
         onPlanReady={handlePlanReady}
         onboardingData={onboardingData}
+      />
+    );
+  }
+
+  if (mode === "checkin") {
+    return (
+      <TextConversation
+        onBack={() => setMode("hub")}
+        onPlanReady={handlePlanReady}
+        chatMode="checkin"
       />
     );
   }
@@ -110,7 +121,21 @@ export default function Home() {
     return <Results plan={actionPlan} onStartOver={handleStartOver} />;
   }
 
-  // Hub
+  // Authenticated users see the Dashboard
+  if (user && supabase) {
+    return (
+      <Dashboard
+        userId={user.id}
+        supabase={supabase}
+        onStartChat={() => setMode("textChat")}
+        onStartVoice={() => setMode("conversation")}
+        onStartCheckin={() => setMode("checkin")}
+        onSignOut={handleSignOut}
+      />
+    );
+  }
+
+  // Unauthenticated hub
   return (
     <div className="flex flex-col items-center justify-center min-h-[100dvh] bg-bg px-6 text-center">
       <div className="w-20 h-20 rounded-full bg-accent-soft flex items-center justify-center mb-6">
@@ -147,26 +172,13 @@ export default function Home() {
         </button>
       </div>
 
-      {/* Auth section */}
       <div className="mt-8">
-        {user ? (
-          <div className="flex items-center gap-3">
-            <p className="text-xs text-text-muted">{user.email}</p>
-            <button
-              onClick={handleSignOut}
-              className="text-xs text-text-muted hover:text-text-soft transition-colors underline"
-            >
-              Sign out
-            </button>
-          </div>
-        ) : (
-          <button
-            onClick={() => setMode("auth")}
-            className="text-sm text-primary hover:text-primary-dark transition-colors"
-          >
-            Sign in to save your progress
-          </button>
-        )}
+        <button
+          onClick={() => setMode("auth")}
+          className="text-sm text-primary hover:text-primary-dark transition-colors"
+        >
+          Sign in to save your progress
+        </button>
       </div>
 
       <p className="mt-4 text-xs text-text-muted max-w-sm">
