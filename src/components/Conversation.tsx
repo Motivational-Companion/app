@@ -4,8 +4,9 @@ import { useConversation } from "@elevenlabs/react";
 import type { DisconnectionDetails, Mode, Status } from "@elevenlabs/react";
 import { useCallback, useState, useEffect } from "react";
 import LiveLists, { type NoteItem } from "@/components/LiveLists";
+import type { OnboardingData } from "@/lib/types";
 
-export default function Conversation({ onBack }: { onBack?: () => void }) {
+export default function Conversation({ onBack, onboardingData }: { onBack?: () => void; onboardingData?: OnboardingData | null }) {
   const [hasStarted, setHasStarted] = useState(false);
   const [micAllowed, setMicAllowed] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -128,10 +129,30 @@ export default function Conversation({ onBack }: { onBack?: () => void }) {
         return;
       }
 
+      // Build dynamic variables from onboarding quiz answers
+      const dynamicVariables: Record<string, string> = {};
+      if (onboardingData) {
+        if (onboardingData.bringYouHere) dynamicVariables.bring_you_here = String(onboardingData.bringYouHere);
+        if (onboardingData.vision) dynamicVariables.vision = String(onboardingData.vision);
+        if (onboardingData.priorityArea) dynamicVariables.priority_area = String(onboardingData.priorityArea);
+        if (onboardingData.coachingStyle) dynamicVariables.coaching_style = String(onboardingData.coachingStyle);
+        if (onboardingData.checkinTime) dynamicVariables.checkin_time = String(onboardingData.checkinTime);
+        if (Array.isArray(onboardingData.obstacles) && onboardingData.obstacles.length > 0) {
+          dynamicVariables.obstacles = onboardingData.obstacles.join(", ");
+        }
+        if (Array.isArray(onboardingData.triedBefore) && onboardingData.triedBefore.length > 0) {
+          dynamicVariables.tried_before = onboardingData.triedBefore.join(", ");
+        }
+        if (Array.isArray(onboardingData.lookLike) && onboardingData.lookLike.length > 0) {
+          dynamicVariables.mental_space = onboardingData.lookLike.join(", ");
+        }
+      }
+
       await conversation.startSession({
         agentId,
         connectionType: "websocket",
         ...(selectedMic ? { inputDeviceId: selectedMic } : {}),
+        ...(Object.keys(dynamicVariables).length > 0 ? { dynamicVariables } : {}),
       });
 
       setHasStarted(true);
@@ -142,7 +163,7 @@ export default function Conversation({ onBack }: { onBack?: () => void }) {
         setMicAllowed(false);
       }
     }
-  }, [conversation, selectedMic]);
+  }, [conversation, selectedMic, onboardingData]);
 
   const endConversation = useCallback(async () => {
     try {

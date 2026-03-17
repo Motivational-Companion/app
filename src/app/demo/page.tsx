@@ -33,7 +33,12 @@ export default function Home() {
   // Check URL params on mount — handle post-checkout redirect
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get("start") === "chat") {
+    const startParam = params.get("start");
+    if (startParam === "voice") {
+      setOnboardingData(loadOnboardingData());
+      setMode("conversation");
+      window.history.replaceState({}, "", "/demo");
+    } else if (startParam === "chat") {
       setOnboardingData(loadOnboardingData());
       setMode("textChat");
       window.history.replaceState({}, "", "/demo");
@@ -86,7 +91,7 @@ export default function Home() {
   }
 
   if (mode === "conversation") {
-    return <Conversation onBack={() => setMode("hub")} />;
+    return <Conversation onBack={() => setMode("hub")} onboardingData={onboardingData} />;
   }
 
   if (mode === "textChat") {

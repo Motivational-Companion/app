@@ -100,13 +100,13 @@ export default function QuizFunnel({ onCheckout }: Props) {
   // Reflective text for Screen 2 based on Screen 1 selection
   const reflectionBubbles: Record<string, string> = {
     overwhelmed:
-      "Feeling overwhelmed usually means you care about a lot of things and they\u2019re all competing for attention. Let\u2019s untangle that.",
+      "I hear you. Feeling overwhelmed usually means you care about a lot of things and they\u2019re all competing for attention. Let\u2019s untangle that.",
     stuck:
-      "Feeling stuck usually means there\u2019s something real in the way. Let\u2019s figure out what it is.",
+      "I hear you. Feeling stuck usually means there\u2019s something real in the way. Let\u2019s figure out what it is.",
     clarity:
-      "Needing clarity is actually a great sign. It means you\u2019re ready to focus. Let\u2019s figure out where.",
+      "I hear you. Needing clarity is actually a great sign. It means you\u2019re ready to focus. Let\u2019s figure out where.",
     accountable:
-      "Wanting accountability means you already know what matters. You just need someone in your corner.",
+      "I hear you. Wanting accountability means you already know what matters. You just need someone in your corner.",
   };
 
   // ─── Screen 0: Sam Welcome ────────────────────────────────────────────
@@ -215,15 +215,16 @@ export default function QuizFunnel({ onCheckout }: Props) {
         <p className="text-xs text-text-muted mb-3">Select all that apply.</p>
         <div className="space-y-2">
           {[
-            "Work/career stress",
-            "Relationships/family",
-            "Health/fitness/energy",
-            "Personal project/goal",
-            "Finances/money worries",
-            "General overwhelm \u2014 all of it",
-          ].map((item) => (
+            ["\uD83D\uDCBC", "Work or career stress"],
+            ["\uD83D\uDC96", "Relationships or family"],
+            ["\uD83D\uDCAA", "Health, fitness, or energy"],
+            ["\uD83C\uDF31", "A personal project or goal"],
+            ["\uD83D\uDCB0", "Finances or money worries"],
+            ["\uD83E\uDDE0", "General overwhelm \u2014 all of it"],
+          ].map(([icon, item]) => (
             <CompactOption
               key={item}
+              icon={icon}
               label={item}
               selected={data.mentalSpace.includes(item)}
               onClick={() => toggleMulti("mentalSpace", item)}
@@ -252,15 +253,16 @@ export default function QuizFunnel({ onCheckout }: Props) {
         <p className="text-sm text-text-muted mb-4">Most people pick 2-3.</p>
         <div className="space-y-2">
           {[
-            "Not enough time",
-            "Low energy/motivation",
-            "Overthinking everything",
-            "Other people\u2019s needs come first",
-            "Fear of failure/judgment",
-            "I don\u2019t know where to start",
-          ].map((item) => (
+            ["\u23F0", "Not enough time"],
+            ["\uD83D\uDCAB", "Low energy or motivation"],
+            ["\uD83E\uDDE0", "Overthinking everything"],
+            ["\uD83D\uDC65", "Other people\u2019s needs come first"],
+            ["\uD83D\uDE36", "Fear of failure or judgment"],
+            ["\uD83C\uDF00", "I don\u2019t know where to start"],
+          ].map(([icon, item]) => (
             <CompactOption
               key={item}
+              icon={icon}
               label={item}
               selected={data.obstacles.includes(item)}
               onClick={() => toggleMulti("obstacles", item)}
@@ -290,11 +292,11 @@ export default function QuizFunnel({ onCheckout }: Props) {
         <p className="text-xs text-text-muted mb-3">Select any that apply.</p>
         <div className="space-y-2">
           {[
-            ["\uD83D\uDCDD", "To-do lists/planners"],
+            ["\uD83D\uDCDD", "To-do lists or planners"],
             ["\uD83D\uDCF1", "Habit tracker apps"],
             ["\uD83D\uDCD6", "Journaling"],
-            ["\uD83D\uDDE3\uFE0F", "Therapy/coaching"],
-            ["\uD83C\uDFA7", "YouTube/podcasts/books"],
+            ["\uD83D\uDDE3\uFE0F", "Therapy or coaching"],
+            ["\uD83C\uDFA5", "YouTube / podcasts / books"],
             ["\uD83E\uDD37", "Nothing yet \u2014 this is my first try"],
           ].map(([icon, label]) => (
             <CompactOption
@@ -418,6 +420,7 @@ export default function QuizFunnel({ onCheckout }: Props) {
       <ScreenShell transitioning={transitioning} direction={direction}>
         <ProgressBar progress={progress} />
         <TopRow onBack={() => goTo(6)} onSkip={() => goTo(8)} />
+        <p className="text-xs font-semibold uppercase tracking-widest text-primary-light mb-2">Quick preferences</p>
         <h2 className="font-display text-xl font-medium text-text mb-1">
           When do you need me most?
         </h2>
@@ -458,6 +461,7 @@ export default function QuizFunnel({ onCheckout }: Props) {
       <ScreenShell transitioning={transitioning} direction={direction}>
         <ProgressBar progress={progress} />
         <TopRow onBack={() => goTo(7)} onSkip={() => goTo(9)} />
+        <p className="text-xs font-semibold uppercase tracking-widest text-primary-light mb-2">Almost there</p>
         <h2 className="font-display text-xl font-medium text-text mb-1">
           Which area should we
           <br />
@@ -506,6 +510,7 @@ export default function QuizFunnel({ onCheckout }: Props) {
       <ScreenShell transitioning={transitioning} direction={direction}>
         <ProgressBar progress={progress} />
         <TopRow onBack={() => goTo(8)} onSkip={() => goTo(10)} />
+        <p className="text-xs font-semibold uppercase tracking-widest text-primary-light mb-2">Last one</p>
         <h2 className="font-display text-xl font-medium text-text mb-4">
           What kind of support
           <br />

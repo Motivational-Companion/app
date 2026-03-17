@@ -52,10 +52,10 @@ function SuccessContent() {
 
         {/* Call to action */}
         <button
-          onClick={() => router.push("/demo?start=chat")}
+          onClick={() => router.push("/demo?start=voice")}
           className="w-full max-w-xs h-14 bg-primary text-white rounded-xl text-base font-semibold hover:bg-primary-dark active:scale-[0.98] transition-all shadow-lg shadow-primary/20"
         >
-          Start Chatting with Sam
+          Start Talking with Sam
         </button>
 
         {sessionId && (
