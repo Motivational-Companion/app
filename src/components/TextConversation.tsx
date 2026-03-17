@@ -110,18 +110,30 @@ export default function TextConversation({ onBack, onPlanReady, onboardingData, 
 
   const handleNote = useCallback(
     (tool: string, data: { title: string; timeframe?: string }) => {
-      const item: NoteItem = {
-        id: crypto.randomUUID(),
-        text: data.title,
-        timeframe: data.timeframe,
-        addedAt: Date.now(),
+      const normalize = (s: string) => s.toLowerCase().trim();
+      const isDuplicate = (prev: NoteItem[]) => {
+        const incoming = normalize(data.title);
+        return prev.some((item) => {
+          const existing = normalize(item.text);
+          // Exact match or one contains the other
+          return existing === incoming || existing.includes(incoming) || incoming.includes(existing);
+        });
       };
 
-      if (tool === "note_issue") setIssues((prev) => [...prev, item]);
-      else if (tool === "note_goal") setGoals((prev) => [...prev, item]);
-      else if (tool === "note_task") setTasks((prev) => [...prev, item]);
+      const setter =
+        tool === "note_issue" ? setIssues : tool === "note_goal" ? setGoals : setTasks;
 
-      setLastAdded(item.id);
+      setter((prev) => {
+        if (isDuplicate(prev)) return prev;
+        const item: NoteItem = {
+          id: crypto.randomUUID(),
+          text: data.title,
+          timeframe: data.timeframe,
+          addedAt: Date.now(),
+        };
+        setLastAdded(item.id);
+        return [...prev, item];
+      });
     },
     []
   );

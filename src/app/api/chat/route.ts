@@ -13,6 +13,9 @@ const anthropic = new Anthropic();
 
 const NOTE_TOOLS = new Set(["note_issue", "note_goal", "note_task"]);
 
+// Track noted items to prevent duplicates across tool-use rounds
+type NotedItem = { tool: string; title: string };
+
 function buildOnboardingContext(ctx: Record<string, unknown>): string {
   const parts: string[] = [];
 
@@ -113,6 +116,9 @@ export async function POST(req: Request) {
           NOTE_TASK_TOOL,
         ];
 
+        // Track all noted items to prevent duplicates across rounds
+        const notedItems: NotedItem[] = [];
+
         // Loop to handle tool use: Claude may call note tools, we process them
         // and let Claude continue talking
         let maxRounds = 5;
@@ -168,18 +174,31 @@ export async function POST(req: Request) {
           );
 
           if (noteBlocks.length > 0) {
-            // Send each note to the client for UI updates
+            // Send each note to the client, skipping duplicates
             for (const block of noteBlocks) {
-              send({
-                type: "note",
-                tool: block.name,
-                data: block.input,
+              const input = block.input as { title: string };
+              const normalTitle = input.title?.toLowerCase().trim() || "";
+              const isDup = notedItems.some((n) => {
+                const existing = n.title.toLowerCase().trim();
+                return existing === normalTitle || existing.includes(normalTitle) || normalTitle.includes(existing);
               });
+
+              if (!isDup) {
+                send({
+                  type: "note",
+                  tool: block.name,
+                  data: block.input,
+                });
+                notedItems.push({ tool: block.name, title: input.title || "" });
+              }
             }
 
             // If there's no plan yet, continue the conversation by sending
             // tool results back to Claude so it can keep talking
             if (!planBlock && finalMessage.stop_reason === "tool_use") {
+              // Tell Claude what's already been noted so it doesn't repeat
+              const alreadyNoted = notedItems.map((n) => `${n.tool}: ${n.title}`).join(", ");
+
               // Build the assistant message with all content blocks
               conversationMessages = [
                 ...conversationMessages,
@@ -189,7 +208,7 @@ export async function POST(req: Request) {
                   content: noteBlocks.map((block) => ({
                     type: "tool_result" as const,
                     tool_use_id: block.id,
-                    content: "Noted. The user can see it on their screen now.",
+                    content: `Noted. The user can see it on their screen now. Already noted so far: ${alreadyNoted}. Do NOT call these tools again for items already noted.`,
                   })),
                 },
               ];
