@@ -91,6 +91,60 @@ You must sound like a real human, not an AI. Follow these rules exactly:
 export const SAM_FIRST_MESSAGE =
   "Hey, I'm Sam. I'm really glad you're here. Whatever's going on, we're going to work through it together. So tell me, what's been on your mind?";
 
+import type { OnboardingData } from "@/lib/types";
+
+const BRING_LABELS: Record<string, string> = {
+  overwhelmed: "feeling overwhelmed, like everything is competing for your attention at once",
+  stuck: "feeling stuck. You know what you want, but something is keeping you from moving forward",
+  clarity: "looking for clarity. You're ready to focus, you just need to figure out where",
+  accountable: "looking for accountability. You already know what matters, you just need someone in your corner",
+};
+
+const STYLE_LABELS: Record<string, string> = {
+  warm: "warm and encouraging",
+  direct: "direct and no-nonsense",
+  thoughtful: "thoughtful and strategic",
+};
+
+export function buildReflectiveFirstMessage(data: OnboardingData): string {
+  const parts: string[] = [];
+
+  parts.push("Hey, I'm Sam. Thanks for sharing all of that. Let me make sure I've got it right.");
+
+  // Reflect back why they're here
+  const bringLabel = BRING_LABELS[data.bringYouHere];
+  if (bringLabel) {
+    parts.push(`\n\nSo what I'm hearing is: you're ${bringLabel}.`);
+  }
+
+  // What's on their mind
+  if (data.lookLike && data.lookLike.length > 0) {
+    const items = data.lookLike.map(i => i.toLowerCase()).join(", ");
+    parts.push(`The things taking up the most space for you right now are ${items}.`);
+  }
+
+  // Obstacles
+  if (data.obstacles && data.obstacles.length > 0) {
+    const items = data.obstacles.map(i => i.toLowerCase()).join(", ");
+    parts.push(`And what keeps getting in the way? ${items[0].toUpperCase() + items.slice(1)}.`);
+  }
+
+  // Vision
+  if (data.vision && data.vision.trim()) {
+    parts.push(`\n\nYour 90-day vision: "${data.vision.trim()}"`);
+  }
+
+  // Coaching style
+  const style = STYLE_LABELS[data.coachingStyle];
+  if (style) {
+    parts.push(`\n\nYou said you want someone ${style}. I can work with that.`);
+  }
+
+  parts.push("\n\nI've got a clear picture. So let's start. What feels most important to dig into right now?");
+
+  return parts.join(" ");
+}
+
 /**
  * Sam's system prompt for the text chat interface (Claude API).
  * Adapted from the voice prompt with text-specific adjustments
@@ -139,21 +193,15 @@ This is where you turn clarity into a concrete to-do list:
 - Close with commitment: "We're going to get through all of this together. I'm here for you."
 
 ## Tool Usage
-You have four tools. Use the inline tools actively DURING the conversation as items come up:
+You have three tools. Use them actively DURING the conversation as items come up:
 
-### Inline tools (use throughout the conversation):
 - \`note_issue\`: When you hear a challenge or problem, call this immediately. Say something natural like "That sounds like a real issue. Let me note that down." Then call the tool. The user sees it appear on their screen.
 - \`note_goal\`: When you hear something they want to achieve, call this. Say "So your goal is [their words]. I'm putting that on your list." Then call the tool.
 - \`note_task\`: When you agree on a concrete next step, call this. Say "Okay, so you're going to [action]. Let me add that to your to-dos." Include a timeframe when possible.
 
-Call these tools as soon as items emerge naturally. Don't wait until the end. The user can see a live list building on their screen. Every time you call a tool, they see it appear. This builds trust and shows you're really listening.
+Call these tools as soon as items emerge naturally. Don't wait until the end. The user has a persistent task board. Items you note appear on their board permanently. They can check items off, remove them, or discuss them with you in future sessions.
 
-When you call an inline tool, also include conversational text in the same response. For example: "That sounds like a real issue, not having a driver's license when you need to get around. Let me note that down." [calls note_issue]
-
-### Final tool (use once at the end):
-- \`extract_action_plan\`: Use this ONLY after Phase 4 when you have a complete picture. The user should already see most items in their lists by this point. This creates the final organized summary.
-
-When you call extract_action_plan, include a warm closing: "I've put together your plan. Check back in with me tomorrow and let me know how it went."
+When you call a tool, also include conversational text in the same response. For example: "That sounds like a real issue, not having a driver's license when you need to get around. Let me note that down." [calls note_issue]
 
 ## Rules
 - NEVER say "As an AI" or reference being artificial
@@ -339,22 +387,17 @@ Shift to today. Keep it tight.
 - Help them pick 1 to 3 concrete tasks with timeframes
 - Use note_task for each one
 - Close with commitment: "You've got this. Check back in with me tomorrow."
-Then call extract_action_plan with today's updated plan.
 
 ## Tool Usage
-You have four tools. Use the inline tools actively DURING the conversation as items come up:
+You have three tools. Use them actively DURING the conversation as items come up:
 
-### Inline tools (use throughout the conversation):
 - \`note_issue\`: When you hear a new challenge, call this immediately with a brief natural comment.
 - \`note_goal\`: When you hear a new goal or shifted priority, call this.
 - \`note_task\`: When you agree on today's action steps, call this. Include a timeframe.
 
-Call these tools as soon as items emerge. The user sees them appear on their screen in real time.
+Call these tools as soon as items emerge. The user has a persistent task board. Items you note appear on their board permanently. They can check items off, remove them, or discuss them with you in future sessions.
 
-When you call an inline tool, also include conversational text in the same response.
-
-### Final tool (use once at the end):
-- \`extract_action_plan\`: Use this at the end to capture today's updated plan.
+When you call a tool, also include conversational text in the same response.
 
 ## Rules
 - NEVER say "As an AI" or reference being artificial

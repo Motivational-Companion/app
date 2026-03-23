@@ -3,7 +3,6 @@ import {
   SAM_TEXT_SYSTEM_PROMPT,
   SAM_CHECKIN_SYSTEM_PROMPT,
   SAM_FIRST_MESSAGE,
-  EXTRACT_ACTION_PLAN_TOOL,
   NOTE_ISSUE_TOOL,
   NOTE_GOAL_TOOL,
   NOTE_TASK_TOOL,
@@ -72,7 +71,7 @@ function buildOnboardingContext(ctx: Record<string, unknown>): string {
 }
 
 export async function POST(req: Request) {
-  const { messages, onboardingContext, mode, taskContext } = await req.json();
+  const { messages, onboardingContext, mode, taskContext, existingTasks } = await req.json();
 
   const chatMode: "chat" | "checkin" = mode === "checkin" ? "checkin" : "chat";
 
@@ -110,7 +109,6 @@ export async function POST(req: Request) {
         );
 
         const allTools = [
-          EXTRACT_ACTION_PLAN_TOOL,
           NOTE_ISSUE_TOOL,
           NOTE_GOAL_TOOL,
           NOTE_TASK_TOOL,
@@ -139,6 +137,10 @@ export async function POST(req: Request) {
             systemPrompt += `\n\n## Current Tasks\nThese are the user's active tasks from previous conversations. Reference them during the check-in to ask what got done and what didn't.\n${taskContext}`;
           }
 
+          if (existingTasks) {
+            systemPrompt += `\n\n## Existing Board Items\nThe user already has these items on their board:\n${existingTasks}\nDo NOT re-note items that are already on their board. Only use note tools for NEW items that come up in this conversation.`;
+          }
+
           const stream = anthropic.messages.stream({
             model: "claude-sonnet-4-6",
             max_tokens: 1024,
@@ -159,14 +161,6 @@ export async function POST(req: Request) {
             (b): b is Anthropic.ContentBlock & { type: "tool_use" } =>
               b.type === "tool_use"
           );
-
-          // Check for extract_action_plan (final plan)
-          const planBlock = toolUseBlocks.find(
-            (b) => b.name === "extract_action_plan"
-          );
-          if (planBlock) {
-            send({ type: "plan", data: planBlock.input });
-          }
 
           // Check for inline note tools
           const noteBlocks = toolUseBlocks.filter((b) =>
@@ -193,9 +187,9 @@ export async function POST(req: Request) {
               }
             }
 
-            // If there's no plan yet, continue the conversation by sending
-            // tool results back to Claude so it can keep talking
-            if (!planBlock && finalMessage.stop_reason === "tool_use") {
+            // Continue the conversation by sending tool results back to Claude
+            // so it can keep talking after noting items
+            if (finalMessage.stop_reason === "tool_use") {
               // Tell Claude what's already been noted so it doesn't repeat
               const alreadyNoted = notedItems.map((n) => `${n.tool}: ${n.title}`).join(", ");
 

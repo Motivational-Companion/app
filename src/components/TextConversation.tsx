@@ -1,28 +1,31 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import type { ChatMessage, ActionPlan, OnboardingData } from "@/lib/types";
-import { SAM_FIRST_MESSAGE, SAM_CHECKIN_FIRST_MESSAGE } from "@/lib/sam-prompt";
+import type { ChatMessage, OnboardingData } from "@/lib/types";
+import { SAM_FIRST_MESSAGE, buildReflectiveFirstMessage, SAM_CHECKIN_FIRST_MESSAGE } from "@/lib/sam-prompt";
 import LiveLists, { type NoteItem } from "@/components/LiveLists";
 import { useAuth } from "@/lib/supabase/useAuth";
 import {
   createConversation,
   saveMessage,
   endConversation,
-  saveTasks,
-  saveActionPlan,
   loadActiveTasks,
 } from "@/lib/supabase/data";
 
 type Props = {
   onBack?: () => void;
-  onPlanReady: (plan: ActionPlan) => void;
   onboardingData?: OnboardingData | null;
   chatMode?: "chat" | "checkin";
+  onNoteAdded?: (listKey: "issues" | "goals" | "tasks", item: NoteItem) => void;
+  existingTasks?: string;
 };
 
-export default function TextConversation({ onBack, onPlanReady, onboardingData, chatMode = "chat" }: Props) {
-  const firstMessage = chatMode === "checkin" ? SAM_CHECKIN_FIRST_MESSAGE : SAM_FIRST_MESSAGE;
+export default function TextConversation({ onBack, onboardingData, chatMode = "chat", onNoteAdded, existingTasks }: Props) {
+  const firstMessage = chatMode === "checkin"
+    ? SAM_CHECKIN_FIRST_MESSAGE
+    : onboardingData
+      ? buildReflectiveFirstMessage(onboardingData)
+      : SAM_FIRST_MESSAGE;
   const [messages, setMessages] = useState<ChatMessage[]>([
     { role: "assistant", content: firstMessage },
   ]);
@@ -36,6 +39,16 @@ export default function TextConversation({ onBack, onPlanReady, onboardingData, 
   const [goals, setGoals] = useState<NoteItem[]>([]);
   const [tasks, setTasks] = useState<NoteItem[]>([]);
   const [lastAdded, setLastAdded] = useState<string | null>(null);
+
+  // Inline note cards that appear in the chat flow
+  type NoteCard = {
+    id: string;
+    category: "issue" | "goal" | "task";
+    text: string;
+    timeframe?: string;
+    afterMessageIndex: number;
+  };
+  const [noteCards, setNoteCards] = useState<NoteCard[]>([]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -110,12 +123,11 @@ export default function TextConversation({ onBack, onPlanReady, onboardingData, 
 
   const handleNote = useCallback(
     (tool: string, data: { title: string; timeframe?: string }) => {
-      const normalize = (s: string) => s.toLowerCase().trim();
+      const normalize = (s: string) => s.toLowerCase().trim().replace(/\b(a|an|the|my|your|get|to)\b/g, "").replace(/\s+/g, " ").trim();
       const isDuplicate = (prev: NoteItem[]) => {
         const incoming = normalize(data.title);
         return prev.some((item) => {
           const existing = normalize(item.text);
-          // Exact match or one contains the other
           return existing === incoming || existing.includes(incoming) || incoming.includes(existing);
         });
       };
@@ -132,10 +144,25 @@ export default function TextConversation({ onBack, onPlanReady, onboardingData, 
           addedAt: Date.now(),
         };
         setLastAdded(item.id);
+
+        // Show inline card in chat
+        const category = tool === "note_issue" ? "issue" as const : tool === "note_goal" ? "goal" as const : "task" as const;
+        setNoteCards((cards) => [...cards, {
+          id: item.id,
+          category,
+          text: data.title,
+          timeframe: data.timeframe,
+          afterMessageIndex: messages.length - 1,
+        }]);
+
+        // Notify parent (board persistence)
+        const listKey = tool === "note_issue" ? "issues" as const : tool === "note_goal" ? "goals" as const : "tasks" as const;
+        if (onNoteAdded) onNoteAdded(listKey, item);
+
         return [...prev, item];
       });
     },
-    []
+    [onNoteAdded]
   );
 
   const sendMessage = useCallback(async () => {
@@ -164,6 +191,7 @@ export default function TextConversation({ onBack, onPlanReady, onboardingData, 
           ...(onboardingData ? { onboardingContext: onboardingData } : {}),
           ...(chatMode === "checkin" ? { mode: "checkin" } : {}),
           ...(taskContext ? { taskContext } : {}),
+          ...(existingTasks ? { existingTasks } : {}),
         }),
       });
 
@@ -177,7 +205,6 @@ export default function TextConversation({ onBack, onPlanReady, onboardingData, 
 
       const decoder = new TextDecoder();
       let assistantText = "";
-      let plan: ActionPlan | null = null;
       let buffer = "";
 
       setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
@@ -210,8 +237,6 @@ export default function TextConversation({ onBack, onPlanReady, onboardingData, 
               });
             } else if (event.type === "note") {
               handleNote(event.tool, event.data);
-            } else if (event.type === "plan") {
-              plan = event.data as ActionPlan;
             } else if (event.type === "error") {
               throw new Error(event.message);
             }
@@ -227,16 +252,6 @@ export default function TextConversation({ onBack, onPlanReady, onboardingData, 
         saveMessage(supabase, conversationIdRef.current, "assistant", assistantText);
       }
 
-      if (plan) {
-        // Persist action plan and note items (fire-and-forget)
-        if (user && supabase && conversationIdRef.current) {
-          saveActionPlan(supabase, user.id, conversationIdRef.current, plan);
-          saveTasks(supabase, user.id, "issue", issues);
-          saveTasks(supabase, user.id, "goal", goals);
-          saveTasks(supabase, user.id, "task", tasks);
-        }
-        setTimeout(() => onPlanReady(plan!), 2000);
-      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setError(msg);
@@ -249,7 +264,7 @@ export default function TextConversation({ onBack, onPlanReady, onboardingData, 
     } finally {
       setIsStreaming(false);
     }
-  }, [input, messages, isStreaming, onPlanReady, handleNote, onboardingData, user, supabase, issues, goals, tasks]);
+  }, [input, messages, isStreaming, handleNote, onboardingData, user, supabase, issues, goals, tasks, existingTasks]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -259,6 +274,7 @@ export default function TextConversation({ onBack, onPlanReady, onboardingData, 
   };
 
   const totalNotes = issues.length + goals.length + tasks.length;
+  const [listExpanded, setListExpanded] = useState(false);
 
   return (
     <div className="min-h-[100dvh] bg-bg flex justify-center items-start md:items-center md:py-12 md:px-4">
@@ -279,8 +295,8 @@ export default function TextConversation({ onBack, onPlanReady, onboardingData, 
                 &#8592;
               </button>
             )}
-            <div className="w-9 h-9 rounded-full bg-accent-soft flex items-center justify-center">
-              <span className="text-primary-dark font-semibold">S</span>
+            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-accent to-primary flex items-center justify-center">
+              <span className="text-white font-semibold">S</span>
             </div>
             <div>
               <h2 className="font-semibold text-text text-sm">Sam</h2>
@@ -302,51 +318,90 @@ export default function TextConversation({ onBack, onPlanReady, onboardingData, 
         <div className="flex-1 overflow-y-auto">
           {/* Messages */}
           <div className="px-4 py-4 space-y-3">
-            {messages.map((msg, i) => (
-              <div
-                key={i}
-                className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-              >
-                {msg.role === "assistant" && (
-                  <div className="w-7 h-7 rounded-full bg-accent-soft flex items-center justify-center shrink-0 mr-2 mt-1">
-                    <span className="text-primary-dark text-xs font-semibold">
-                      S
-                    </span>
+            {messages.map((msg, i) => {
+              const cardsAfter = noteCards.filter((c) => c.afterMessageIndex === i);
+              return (
+                <div key={i}>
+                  <div
+                    className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                  >
+                    {msg.role === "assistant" && (
+                      <div className="w-7 h-7 rounded-full bg-gradient-to-br from-accent to-primary flex items-center justify-center shrink-0 mr-2 mt-1">
+                        <span className="text-white text-xs font-semibold">
+                          S
+                        </span>
+                      </div>
+                    )}
+                    <div
+                      className={`max-w-[80%] px-4 py-3 rounded-2xl text-sm leading-relaxed ${
+                        msg.role === "user"
+                          ? "bg-primary text-white rounded-br-sm"
+                          : "bg-card border border-border text-text rounded-bl-sm"
+                      }`}
+                    >
+                      {msg.content || (
+                        <span className="inline-flex gap-1">
+                          <span className="w-1.5 h-1.5 bg-text-muted rounded-full animate-bounce" />
+                          <span
+                            className="w-1.5 h-1.5 bg-text-muted rounded-full animate-bounce"
+                            style={{ animationDelay: "0.15s" }}
+                          />
+                          <span
+                            className="w-1.5 h-1.5 bg-text-muted rounded-full animate-bounce"
+                            style={{ animationDelay: "0.3s" }}
+                          />
+                        </span>
+                      )}
+                    </div>
                   </div>
-                )}
-                <div
-                  className={`max-w-[80%] px-4 py-3 rounded-2xl text-sm leading-relaxed ${
-                    msg.role === "user"
-                      ? "bg-primary text-white rounded-br-sm"
-                      : "bg-card border border-border text-text rounded-bl-sm"
-                  }`}
-                >
-                  {msg.content || (
-                    <span className="inline-flex gap-1">
-                      <span className="w-1.5 h-1.5 bg-text-muted rounded-full animate-bounce" />
-                      <span
-                        className="w-1.5 h-1.5 bg-text-muted rounded-full animate-bounce"
-                        style={{ animationDelay: "0.15s" }}
-                      />
-                      <span
-                        className="w-1.5 h-1.5 bg-text-muted rounded-full animate-bounce"
-                        style={{ animationDelay: "0.3s" }}
-                      />
-                    </span>
-                  )}
+                  {cardsAfter.map((card) => (
+                    <div
+                      key={card.id}
+                      className="ml-9 mt-2 flex items-center gap-2.5 bg-bg border border-border rounded-xl px-3 py-2 animate-[fadeSlideIn_0.3s_ease-out]"
+                    >
+                      <span className="text-sm">
+                        {card.category === "issue" ? "\uD83D\uDFE1" : card.category === "goal" ? "\uD83C\uDFAF" : "\u2705"}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">
+                          {card.category === "issue" ? "Issue noted" : card.category === "goal" ? "Goal added" : "To-do added"}
+                        </p>
+                        <p className="text-sm text-text truncate">{card.text}</p>
+                      </div>
+                      {card.timeframe && (
+                        <span className="text-xs text-text-muted shrink-0">{card.timeframe}</span>
+                      )}
+                    </div>
+                  ))}
                 </div>
-              </div>
-            ))}
+              );
+            })}
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Live lists */}
-          {totalNotes > 0 && (
-            <div className="px-4 pb-4">
-              <div className="border-t border-border pt-3">
-                <p className="text-xs text-text-muted font-semibold uppercase tracking-wider mb-3">
-                  Your List
-                </p>
+        </div>
+
+        {/* Collapsible list bar */}
+        {totalNotes > 0 && (
+          <div className="border-t border-border shrink-0">
+            <button
+              onClick={() => setListExpanded(!listExpanded)}
+              className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-bg/50 transition-colors"
+            >
+              <span className="text-xs font-semibold uppercase tracking-wider text-text-muted">
+                Your List
+              </span>
+              <span className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-primary bg-primary/10 rounded-full px-2 py-0.5">
+                  {totalNotes}
+                </span>
+                <span className={`text-text-muted text-xs transition-transform ${listExpanded ? "rotate-180" : ""}`}>
+                  &#9650;
+                </span>
+              </span>
+            </button>
+            {listExpanded && (
+              <div className="px-4 pb-3 max-h-[40vh] overflow-y-auto">
                 <LiveLists
                   issues={issues}
                   goals={goals}
@@ -356,9 +411,9 @@ export default function TextConversation({ onBack, onPlanReady, onboardingData, 
                   lastAdded={lastAdded}
                 />
               </div>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        )}
 
         {/* Input */}
         <div className="px-4 pb-5 pt-3 border-t border-border shrink-0">
