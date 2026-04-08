@@ -12,37 +12,27 @@ export default function Home() {
   const router = useRouter();
 
   const handleCheckout = async (plan: "annual" | "monthly") => {
-    const priceId =
-      plan === "annual"
-        ? process.env.NEXT_PUBLIC_STRIPE_ANNUAL_PRICE_ID
-        : process.env.NEXT_PUBLIC_STRIPE_MONTHLY_PRICE_ID;
-
-    if (!priceId) {
-      // Stripe not configured — go straight to demo
-      router.push("/demo?start=chat");
-      return;
-    }
-
     try {
       const res = await fetch("/api/stripe/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ priceId }),
+        body: JSON.stringify({ plan }),
       });
       const data = await res.json();
       if (data.url) {
         window.location.href = data.url;
       } else {
-        // Fallback if checkout fails
-        router.push("/demo?start=chat");
+        console.error("Stripe checkout error:", data.error);
+        alert("Something went wrong starting checkout. Please try again.");
       }
-    } catch {
-      router.push("/demo?start=chat");
+    } catch (err) {
+      console.error("Checkout failed:", err);
+      alert("Something went wrong starting checkout. Please try again.");
     }
   };
 
   if (mode === "quiz") {
-    return <QuizFunnel onCheckout={handleCheckout} />;
+    return <QuizFunnel onCheckout={handleCheckout} onBack={() => setMode("landing")} />;
   }
 
   return (

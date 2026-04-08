@@ -138,7 +138,7 @@ export default function Onboarding({ onComplete }: Props) {
               <p className="text-sm text-text-soft"><strong>A real plan</strong> you&apos;ll actually follow</p>
             </div>
           </div>
-          <p className="text-xs text-text-muted mb-6">12,000+ started this week</p>
+          <p className="text-xs text-text-muted mb-6">AI-powered coaching. Takes 3 minutes.</p>
         </div>
         <button
           onClick={() => goTo(1)}
@@ -714,7 +714,7 @@ export default function Onboarding({ onComplete }: Props) {
           No charge for 7 days. Cancel in settings anytime.
         </p>
         <div className="flex justify-center gap-4 mt-4">
-          {["🔒 Secure", "📅 7 days free", "❌ Cancel anytime", "⭐ 4.8 stars"].map(
+          {["🔒 Secure", "📅 7 days free", "❌ Cancel anytime"].map(
             (item) => (
               <span key={item} className="text-[11px] text-text-muted">
                 {item}

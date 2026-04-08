@@ -4,15 +4,13 @@ import { useState, useEffect } from "react";
 import Onboarding from "@/components/Onboarding";
 import Conversation from "@/components/Conversation";
 import TextConversation from "@/components/TextConversation";
-import Processing from "@/components/Processing";
-import Results from "@/components/Results";
 import AuthGate from "@/components/AuthGate";
 import Dashboard from "@/components/Dashboard";
 import { useAuth } from "@/lib/supabase/useAuth";
 import { saveOnboardingData } from "@/lib/supabase/data";
-import type { ActionPlan, OnboardingData } from "@/lib/types";
+import type { OnboardingData } from "@/lib/types";
 
-type Mode = "hub" | "auth" | "conversation" | "textChat" | "checkin" | "onboarding" | "processing" | "results";
+type Mode = "hub" | "auth" | "conversation" | "textChat" | "checkin" | "onboarding";
 
 function loadOnboardingData(): OnboardingData | null {
   try {
@@ -27,7 +25,6 @@ function loadOnboardingData(): OnboardingData | null {
 export default function Home() {
   const { user, loading, supabase } = useAuth();
   const [mode, setMode] = useState<Mode>("hub");
-  const [actionPlan, setActionPlan] = useState<ActionPlan | null>(null);
   const [onboardingData, setOnboardingData] = useState<OnboardingData | null>(null);
 
   // Check URL params on mount — handle post-checkout redirect
@@ -44,17 +41,6 @@ export default function Home() {
       window.history.replaceState({}, "", "/demo");
     }
   }, []);
-
-  const handlePlanReady = (plan: ActionPlan) => {
-    setActionPlan(plan);
-    setMode("processing");
-  };
-
-  const handleStartOver = () => {
-    setActionPlan(null);
-    setOnboardingData(null);
-    setMode("hub");
-  };
 
   const handleOnboardingComplete = async (data: OnboardingData) => {
     setOnboardingData(data);
@@ -97,8 +83,7 @@ export default function Home() {
   if (mode === "textChat") {
     return (
       <TextConversation
-        onBack={() => setMode(user ? "hub" : "hub")}
-        onPlanReady={handlePlanReady}
+        onBack={() => setMode("hub")}
         onboardingData={onboardingData}
       />
     );
@@ -108,7 +93,6 @@ export default function Home() {
     return (
       <TextConversation
         onBack={() => setMode("hub")}
-        onPlanReady={handlePlanReady}
         chatMode="checkin"
       />
     );
@@ -116,14 +100,6 @@ export default function Home() {
 
   if (mode === "onboarding") {
     return <Onboarding onComplete={handleOnboardingComplete} />;
-  }
-
-  if (mode === "processing") {
-    return <Processing onComplete={() => setMode("results")} />;
-  }
-
-  if (mode === "results" && actionPlan) {
-    return <Results plan={actionPlan} onStartOver={handleStartOver} />;
   }
 
   // Authenticated users see the Dashboard
@@ -155,9 +131,16 @@ export default function Home() {
 
       <div className="w-full max-w-sm space-y-4">
         <button
-          onClick={() => setMode("textChat")}
+          onClick={() => setMode("onboarding")}
           className="w-full h-14 bg-primary text-white rounded-2xl text-lg font-semibold
                      hover:bg-primary-dark active:scale-[0.98] transition-all shadow-lg shadow-primary/20"
+        >
+          Onboarding Quiz
+        </button>
+        <button
+          onClick={() => setMode("textChat")}
+          className="w-full h-14 border-2 border-primary text-primary rounded-2xl text-base font-semibold
+                     hover:bg-primary/[0.04] active:scale-[0.98] transition-all"
         >
           Chat with Sam
         </button>
@@ -167,13 +150,6 @@ export default function Home() {
                      hover:bg-primary/[0.04] active:scale-[0.98] transition-all"
         >
           Talk to Sam (Voice)
-        </button>
-        <button
-          onClick={() => setMode("onboarding")}
-          className="w-full h-12 border border-border text-text-muted rounded-2xl text-sm font-medium
-                     hover:border-primary-light/50 hover:text-text-soft active:scale-[0.98] transition-all"
-        >
-          Try the Onboarding Quiz
         </button>
       </div>
 

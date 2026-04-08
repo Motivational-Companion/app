@@ -31,9 +31,42 @@ async function syncSubscriptionToProfile(
 
   if (error) {
     console.error("Failed to sync subscription to profile:", error);
-  } else if (!data || data.length === 0) {
-    console.log(`No profile found for Stripe customer ${customerId} — will be linked on next login`);
+    return;
   }
+
+  if (data && data.length > 0) {
+    console.log(`Synced subscription ${subscriptionId} to profile ${data[0].id}`);
+    return;
+  }
+
+  // Fallback: try to find the profile via Stripe customer email
+  try {
+    const secretKey = process.env.STRIPE_SECRET_KEY;
+    if (secretKey) {
+      const stripe = new (await import("stripe")).default(secretKey);
+      const customer = await stripe.customers.retrieve(customerId);
+      if (!("deleted" in customer) && customer.email) {
+        const { data: users } = await supabase.auth.admin.listUsers();
+        const matchedUser = users?.users?.find(
+          (u) => u.email === customer.email
+        );
+        if (matchedUser) {
+          await supabase
+            .from("profiles")
+            .update(updates)
+            .eq("id", matchedUser.id);
+          console.log(
+            `Linked subscription to user ${matchedUser.id} via email ${customer.email}`
+          );
+          return;
+        }
+      }
+    }
+  } catch (e) {
+    console.error("Email fallback lookup failed:", e);
+  }
+
+  console.log(`No profile found for Stripe customer ${customerId}. Will be linked on next login.`);
 }
 
 export async function POST(request: NextRequest) {
@@ -50,9 +83,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const stripe = new Stripe(secretKey, {
-    apiVersion: "2026-02-25.clover",
-  });
+  const stripe = new Stripe(secretKey);
 
   const rawBody = await request.text();
   const signature = request.headers.get("stripe-signature");
@@ -82,9 +113,37 @@ export async function POST(request: NextRequest) {
   switch (event.type) {
     case "checkout.session.completed": {
       const session = event.data.object as Stripe.Checkout.Session;
+      const customerId = session.customer as string;
+      const customerEmail = session.customer_details?.email || session.customer_email;
       console.log(
-        `Checkout session completed: ${session.id}, customer: ${session.customer}, subscription: ${session.subscription}`
+        `Checkout session completed: ${session.id}, customer: ${customerId}, email: ${customerEmail}, subscription: ${session.subscription}`
       );
+
+      // Link Stripe customer to Supabase profile via email
+      if (customerEmail && customerId) {
+        const supabase = createServiceClient();
+        if (supabase) {
+          // Find user by email in auth.users, then update their profile
+          const { data: users } = await supabase.auth.admin.listUsers();
+          const matchedUser = users?.users?.find(
+            (u) => u.email === customerEmail
+          );
+          if (matchedUser) {
+            await supabase
+              .from("profiles")
+              .update({ stripe_customer_id: customerId })
+              .eq("id", matchedUser.id);
+            console.log(
+              `Linked Stripe customer ${customerId} to user ${matchedUser.id}`
+            );
+          } else {
+            // User hasn't created an account yet. Store the mapping so we can link on signup.
+            console.log(
+              `No user found for email ${customerEmail}. Will be linked when user creates account.`
+            );
+          }
+        }
+      }
       break;
     }
 

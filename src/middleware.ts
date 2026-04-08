@@ -1,6 +1,14 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
+const PROTECTED_ROUTES = ["/chat"];
+
+function isProtectedRoute(pathname: string): boolean {
+  return PROTECTED_ROUTES.some(
+    (route) => pathname === route || pathname.startsWith(route + "/")
+  );
+}
+
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
 
@@ -30,7 +38,28 @@ export async function middleware(request: NextRequest) {
   });
 
   // Refresh the session (important for Server Components)
-  await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  // Gate protected routes behind auth + active subscription
+  if (isProtectedRoute(request.nextUrl.pathname)) {
+    if (!user) {
+      return NextResponse.redirect(new URL("/", request.url));
+    }
+
+    // Check subscription status in profile
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("subscription_status")
+      .eq("id", user.id)
+      .single();
+
+    const status = profile?.subscription_status;
+    if (status !== "active" && status !== "trialing") {
+      return NextResponse.redirect(new URL("/", request.url));
+    }
+  }
 
   return supabaseResponse;
 }

@@ -191,8 +191,8 @@ export default function Conversation({ onBack, onboardingData }: { onBack?: () =
           )}
 
           <div className="mb-10 text-center">
-            <div className="w-20 h-20 rounded-full bg-accent-soft flex items-center justify-center mx-auto mb-6">
-              <span className="text-primary-dark font-display text-3xl">S</span>
+            <div className="w-20 h-20 rounded-full bg-gradient-to-br from-accent to-primary flex items-center justify-center mx-auto mb-6">
+              <span className="text-white font-display text-3xl">S</span>
             </div>
             <h1 className="font-display text-3xl font-semibold text-text mb-3">Meet Sam</h1>
             <p className="text-text-soft text-lg max-w-sm leading-relaxed">
@@ -271,8 +271,8 @@ export default function Conversation({ onBack, onboardingData }: { onBack?: () =
         {/* Header */}
         <header className="flex items-center justify-between px-5 py-3 border-b border-border shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-full bg-accent-soft flex items-center justify-center">
-              <span className="text-primary-dark font-semibold">S</span>
+            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-accent to-primary flex items-center justify-center">
+              <span className="text-white font-semibold">S</span>
             </div>
             <div>
               <h2 className="font-semibold text-text text-sm">Sam</h2>

@@ -11,6 +11,7 @@ import {
   endConversation,
   loadActiveTasks,
 } from "@/lib/supabase/data";
+import { trackEvent } from "@/lib/analytics";
 
 type Props = {
   onBack?: () => void;
@@ -144,6 +145,7 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
           addedAt: Date.now(),
         };
         setLastAdded(item.id);
+        trackEvent("task_extracted", { category: tool, title: data.title });
 
         // Show inline card in chat
         const category = tool === "note_issue" ? "issue" as const : tool === "note_goal" ? "goal" as const : "task" as const;
@@ -176,6 +178,11 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
     const updatedMessages = [...messages, userMessage];
     setMessages(updatedMessages);
     setIsStreaming(true);
+
+    // Track first user message as chat_started
+    if (messages.length === 1) {
+      trackEvent("chat_started", { mode: chatMode });
+    }
 
     // Persist user message (fire-and-forget)
     if (user && supabase && conversationIdRef.current) {

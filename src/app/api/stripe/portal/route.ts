@@ -12,9 +12,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const stripe = new Stripe(secretKey, {
-    apiVersion: "2026-02-25.clover",
-  });
+  const stripe = new Stripe(secretKey);
 
   try {
     const body = await request.json();
