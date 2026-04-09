@@ -143,9 +143,14 @@ function SuccessContent() {
     );
   }
 
-  // Auth step: show account creation
+  // Auth step: show post-purchase account creation (CRO-optimized copy)
   if (step === "auth" && !user) {
-    return <AuthGate onAuthenticated={handleAuthenticated} />;
+    return (
+      <AuthGate
+        onAuthenticated={handleAuthenticated}
+        variant="post-purchase"
+      />
+    );
   }
 
   // Migrating state
