@@ -36,6 +36,29 @@ When in doubt, use the branch flow.
 - No dead code or commented-out blocks
 - Error states must be handled at user-facing boundaries
 
+## Testing requirements (required for every feature)
+
+Every new feature or material change must ship with:
+
+1. **Automated unit/component tests** (Vitest + React Testing Library)
+   - Cover the happy path, at least one error path, and any conditional
+     branching logic
+   - Live under `src/test/` following existing naming conventions
+
+2. **End-to-end test** covering the user-facing flow
+   - Exercise the feature as a user would (click, type, navigate)
+   - Assert on observable outcomes (DOM, network calls, persisted data)
+   - For features touching Stripe, Supabase, or Claude, use mocks or test
+     fixtures rather than hitting production APIs
+
+3. **Manual verification checklist** in the PR description
+   - Step-by-step flow the reviewer can run locally
+   - Expected vs actual results for each step
+
+No feature merges without all three. This is non-negotiable — we are
+running paid ad traffic against this product. Regressions cost money and
+credibility.
+
 ## Key architectural facts
 
 - **ICP:** Women 25-45 seeking clarity on goals and tasks
