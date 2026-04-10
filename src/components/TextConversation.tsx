@@ -6,9 +6,8 @@ import { SAM_FIRST_MESSAGE, buildReflectiveFirstMessage, SAM_CHECKIN_FIRST_MESSA
 import LiveLists, { type NoteItem } from "@/components/LiveLists";
 import { useAuth } from "@/lib/supabase/useAuth";
 import {
-  createConversation,
+  getOrCreateActiveConversation,
   saveMessage,
-  endConversation,
   loadActiveTasks,
 } from "@/lib/supabase/data";
 import { trackEvent } from "@/lib/analytics";
@@ -58,18 +57,22 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
   const { user, supabase } = useAuth();
   const conversationIdRef = useRef<string | null>(null);
 
-  // Create a conversation record on mount when authenticated
+  // Reuse the user's single active conversation when authenticated.
+  // We intentionally exclude `firstMessage` from the dep array — it's only
+  // used inside the one-time greeting save and referencing it would cause
+  // the effect to re-run on every render that recomputes the greeting.
   useEffect(() => {
-    if (user && supabase && !conversationIdRef.current) {
-      createConversation(supabase, user.id, "text").then((id) => {
-        conversationIdRef.current = id;
-        // Save the initial assistant greeting
-        if (id) {
-          saveMessage(supabase, id, "assistant", firstMessage);
-        }
-      });
-    }
-  }, [user, supabase, firstMessage]);
+    if (!user || !supabase || conversationIdRef.current) return;
+    let cancelled = false;
+    getOrCreateActiveConversation(supabase, user.id, "text").then((id) => {
+      if (cancelled || !id) return;
+      conversationIdRef.current = id;
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, supabase]);
 
   // Load active tasks for check-in mode context
   useEffect(() => {
@@ -291,12 +294,7 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
           <div className="flex items-center gap-3">
             {onBack && (
               <button
-                onClick={() => {
-                  if (user && supabase && conversationIdRef.current) {
-                    endConversation(supabase, conversationIdRef.current);
-                  }
-                  onBack();
-                }}
+                onClick={onBack}
                 className="text-text-soft text-xl px-1 py-1 mr-1"
               >
                 &#8592;

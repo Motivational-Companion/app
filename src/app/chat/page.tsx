@@ -103,6 +103,7 @@ export default function ChatPage() {
       <Conversation
         onBack={() => setView("board")}
         onboardingData={onboardingData}
+        onNoteAdded={handleNoteAdded}
       />
     );
   }
