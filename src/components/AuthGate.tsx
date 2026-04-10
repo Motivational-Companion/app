@@ -145,29 +145,41 @@ export default function AuthGate({
     setResendCooldown(RESEND_COOLDOWN_SECONDS);
   };
 
+  const verifyCode = useCallback(
+    async (codeToVerify: string) => {
+      if (!supabase) return;
+      setLoading(true);
+      setError(null);
+
+      try {
+        const { error } = await supabase.auth.verifyOtp({
+          email,
+          token: codeToVerify.trim(),
+          type: "email",
+        });
+
+        if (error) {
+          setError(error.message);
+          // Clear the code field so the user can retype without manually
+          // backspacing 6 characters
+          setCode("");
+          return;
+        }
+
+        onAuthenticated();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Something went wrong");
+        setCode("");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [supabase, email, onAuthenticated]
+  );
+
   const handleVerifyCode = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
-    setError(null);
-
-    try {
-      const { error } = await supabase.auth.verifyOtp({
-        email,
-        token: code.trim(),
-        type: "email",
-      });
-
-      if (error) {
-        setError(error.message);
-        return;
-      }
-
-      onAuthenticated();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong");
-    } finally {
-      setLoading(false);
-    }
+    await verifyCode(code);
   };
 
   const handleResend = async () => {
@@ -223,12 +235,30 @@ export default function AuthGate({
 
         <div className="text-center mb-6">
           <div className="w-16 h-16 rounded-full bg-accent-soft flex items-center justify-center mx-auto mb-4">
-            <span
-              className="text-primary-dark font-display text-2xl"
-              aria-hidden="true"
-            >
-              {step === "code" ? "\u2709" : "S"}
-            </span>
+            {step === "code" ? (
+              <svg
+                width="30"
+                height="30"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="text-primary-dark"
+                aria-hidden="true"
+              >
+                <rect x="2" y="4" width="20" height="16" rx="2" />
+                <path d="M22 7l-10 6L2 7" />
+              </svg>
+            ) : (
+              <span
+                className="text-primary-dark font-display text-2xl"
+                aria-hidden="true"
+              >
+                S
+              </span>
+            )}
           </div>
           <h2 className="font-display text-2xl font-semibold text-text mb-1">
             {step === "code" ? copy.codeHeading : copy.heading}
@@ -290,9 +320,15 @@ export default function AuthGate({
             <input
               type="text"
               value={code}
-              onChange={(e) =>
-                setCode(e.target.value.replace(/\D/g, "").slice(0, 6))
-              }
+              onChange={(e) => {
+                const digits = e.target.value.replace(/\D/g, "").slice(0, 6);
+                setCode(digits);
+                // Auto-submit as soon as the 6th digit lands so users do
+                // not need to also press the button
+                if (digits.length === 6 && !loading) {
+                  void verifyCode(digits);
+                }
+              }}
               placeholder="000000"
               required
               autoFocus
