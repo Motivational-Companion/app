@@ -23,14 +23,16 @@ type Props = {
 /**
  * Responsive layout for the authenticated chat experience.
  *
- * Mobile (<md): renders the chat as a full-width phone-card, and the
- * child (TextConversation embedded) shows its own collapsible task bar.
- * The dedicated focus panel is hidden.
+ * Mobile (<md): the chat fills the viewport (w-full, h-[100dvh]) with no
+ * card chrome, and the child (TextConversation embedded) renders its own
+ * collapsible task bar at the bottom so users can still access their
+ * focus items. The dedicated focus panel is hidden on mobile.
  *
  * Desktop (>=md): renders a split pane — chat card on the left (520px
- * fixed), live focus panel on the right (flex-1). The chat component's
- * inline collapsible task bar is hidden on desktop via its own CSS so
- * the focus panel is the single source of truth.
+ * fixed width, max 900px tall, rounded + shadow + border), live focus
+ * panel on the right (flex-1, same height). The chat component's inline
+ * collapsible task bar is hidden on desktop (md:hidden) so the focus
+ * panel is the single source of truth for the task list.
  *
  * The children are rendered exactly once — no double mounting, no
  * double-instance chat state. Responsive behavior is CSS-only.
