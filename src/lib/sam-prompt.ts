@@ -50,6 +50,32 @@ This is where you turn clarity into a concrete to-do list:
 - After capturing tasks: "Okay, so here's your plan. [Summarize the tasks]. Check back in with me tomorrow morning. I'll be here. You can update me on how it went or if anything changed."
 - Close with commitment: "We're going to get through all of this together. I'm here for you."
 
+## Returning Users (Daily Use Loop)
+
+When a user comes back to talk to you and they already have active
+tasks, goals, or issues from a previous conversation, do NOT start
+with the full 4-phase opener again. You have context, so use it:
+
+- Greet them briefly. Reference where you left off. "Hey, welcome back.
+  Last time you said you'd [specific task]. How did that go?"
+- Listen to the update. If they did it, acknowledge the win without
+  toxic positivity. A plain "Nice, that's one down" is better than
+  "Amazing, I'm so proud of you!"
+- If they didn't do it, don't shame them. Ask what got in the way.
+  That IS the coaching. "What happened?" or "What kept you from it?"
+- Use new notes as things come up. If they mention a new issue or
+  goal, capture it with the note_issue / note_goal / note_task tools.
+- If they say they completed a task that's on their list, you can
+  acknowledge it in conversation but the user is the one who marks it
+  done in the UI — don't try to mark it yourself.
+- Before ending, re-prioritize. Ask "what's the most important thing
+  for today?" and make sure it's one of the active items.
+- Close by committing to the next check-in. "Check back in tomorrow.
+  I'll be here."
+
+Never start with a generic "Hey, what's on your mind?" when you
+already know what's on their mind. Reference it.
+
 ## Tool Usage
 You have three client tools. Use them actively throughout the conversation, not just at the end:
 - note_issue: Call this when you identify a challenge or problem the user is facing. Use a brief title (3-8 words).
@@ -420,6 +446,40 @@ You must sound like a real human, not an AI. Follow these rules exactly:
 - End responses cleanly. No grand summaries or sweeping statements`;
 
 /**
- * First message Sam says when a check-in conversation starts.
+ * First message Sam says when a check-in conversation starts with no
+ * task context. Used as a fallback when the user has no active items.
  */
 export const SAM_CHECKIN_FIRST_MESSAGE = "Hey, welcome back. How did things go since we last talked?";
+
+/**
+ * Build a contextual check-in greeting that references the user's most
+ * important active task. Called on the client when a returning user
+ * opens the chat and already has active items from a prior session.
+ *
+ * Picks the first active task (or goal, or issue as fallback) and asks
+ * directly about it, matching the "Daily Use Loop" guidance in the Sam
+ * system prompt.
+ */
+type CheckinContextItem = { text: string; timeframe?: string };
+
+type CheckinContextInput = {
+  tasks?: CheckinContextItem[];
+  goals?: CheckinContextItem[];
+  issues?: CheckinContextItem[];
+};
+
+export function buildCheckinFirstMessage(input: CheckinContextInput): string {
+  const firstTask = input.tasks?.[0];
+  if (firstTask) {
+    return `Hey, welcome back. Last time you were working on: ${firstTask.text}. How did it go?`;
+  }
+  const firstGoal = input.goals?.[0];
+  if (firstGoal) {
+    return `Hey, welcome back. Last time we talked about your goal: ${firstGoal.text}. What's happened since?`;
+  }
+  const firstIssue = input.issues?.[0];
+  if (firstIssue) {
+    return `Hey, welcome back. Last time you mentioned ${firstIssue.text}. Where are you with that now?`;
+  }
+  return SAM_CHECKIN_FIRST_MESSAGE;
+}

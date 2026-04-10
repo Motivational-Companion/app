@@ -63,18 +63,29 @@ export default function ChatPage() {
   }, [ready, authLoading, user]);
 
   // Load authenticated user's active tasks from Supabase so the split-pane
-  // focus panel has a live data source.
+  // focus panel has a live data source. Also: if the user is a RETURNING
+  // user (has active items from a previous session), land them directly
+  // in a check-in conversation instead of the board. That is the daily
+  // use loop: open app -> Sam greets with context -> talk.
   useEffect(() => {
-    if (!user || !supabase) return;
+    if (!user || !supabase || !ready) return;
     let cancelled = false;
     loadActiveTasks(supabase, user.id).then((result) => {
       if (cancelled) return;
       setAuthTasks(result);
+      const hasItems =
+        result.issues.length + result.goals.length + result.tasks.length > 0;
+      if (hasItems) {
+        setView("checkin");
+      } else {
+        // First-timer (just paid, no items yet) -> drop straight into chat
+        setView("chat");
+      }
     });
     return () => {
       cancelled = true;
     };
-  }, [user, supabase]);
+  }, [user, supabase, ready]);
 
   // Save note to Supabase for authenticated users, localStorage for anonymous.
   // For auth'd users we also update local state immediately so the focus
