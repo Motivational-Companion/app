@@ -357,10 +357,19 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
           </div>
         </header>
 
-        {/* Error banner */}
+        {/* Error banner. Detect specific upstream failures and show a
+            friendly explanation; fall back to the raw message otherwise. */}
         {error && (
-          <div className="px-4 py-2 bg-red-50 border-b border-red-200 shrink-0">
-            <p className="text-xs text-red-600">{error}</p>
+          <div className="px-5 py-3 bg-red-50 border-b border-red-200 shrink-0">
+            <p className="text-sm text-red-700 font-medium leading-snug">
+              {/credit balance|credit_balance|insufficient/i.test(error)
+                ? "Sam is temporarily unavailable (billing). Try again in a moment."
+                : /rate limit|429/i.test(error)
+                  ? "Too many messages at once. Give it a few seconds and try again."
+                  : /timeout|timed out/i.test(error)
+                    ? "Sam took too long to respond. Try sending that again."
+                    : error}
+            </p>
           </div>
         )}
 
@@ -474,19 +483,19 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
         )}
 
         {/* Input */}
-        <div className="px-4 pb-5 pt-3 border-t border-border shrink-0">
+        <div className="px-5 pb-5 pt-4 border-t border-border shrink-0">
           <div className="flex items-end gap-2">
             <textarea
               ref={inputRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Type a message..."
+              placeholder="Brain dump here. What's on your mind?"
               disabled={isStreaming}
-              rows={1}
-              className="flex-1 resize-none rounded-2xl border border-border bg-bg px-4 py-3 text-sm text-text
-                         placeholder:text-text-muted focus:outline-none focus:border-primary transition-colors
-                         disabled:opacity-50 max-h-32"
+              rows={2}
+              className="flex-1 resize-none rounded-2xl border border-border bg-bg px-4 py-3 text-[15px] text-text leading-snug
+                         placeholder:text-text-muted focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/15 transition-all
+                         disabled:opacity-50 min-h-[56px] max-h-32"
               style={{ fieldSizing: "content" } as React.CSSProperties}
             />
             <button
