@@ -2,7 +2,12 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import type { ChatMessage, OnboardingData } from "@/lib/types";
-import { SAM_FIRST_MESSAGE, buildReflectiveFirstMessage, SAM_CHECKIN_FIRST_MESSAGE } from "@/lib/sam-prompt";
+import {
+  SAM_FIRST_MESSAGE,
+  buildReflectiveFirstMessage,
+  SAM_CHECKIN_FIRST_MESSAGE,
+  buildCheckinFirstMessage,
+} from "@/lib/sam-prompt";
 import LiveLists, { type NoteItem } from "@/components/LiveLists";
 import { useAuth } from "@/lib/supabase/useAuth";
 import {
@@ -88,22 +93,39 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, supabase]);
 
-  // Load active tasks for check-in mode context
+  // Load active tasks for check-in mode context + upgrade the generic
+  // "welcome back" greeting to a contextual one that references the
+  // user's most important active task.
   useEffect(() => {
-    if (chatMode === "checkin" && user && supabase) {
-      loadActiveTasks(supabase, user.id).then((result) => {
-        const lines: string[] = [];
-        for (const item of result.tasks) {
-          lines.push(`- ${item.text}${item.timeframe ? ` (${item.timeframe})` : ""}`);
+    if (chatMode !== "checkin" || !user || !supabase) return;
+    loadActiveTasks(supabase, user.id).then((result) => {
+      const lines: string[] = [];
+      for (const item of result.tasks) {
+        lines.push(`- ${item.text}${item.timeframe ? ` (${item.timeframe})` : ""}`);
+      }
+      for (const item of result.goals) {
+        lines.push(`- Goal: ${item.text}`);
+      }
+      if (lines.length > 0) {
+        setTaskContext(lines.join("\n"));
+      }
+
+      // Only upgrade if we have items — otherwise keep the fallback
+      // generic greeting that's already in state.
+      const hasItems =
+        result.tasks.length + result.goals.length + result.issues.length > 0;
+      if (!hasItems) return;
+
+      const contextualGreeting = buildCheckinFirstMessage(result);
+      setMessages((prev) => {
+        // Replace the first assistant message only if it's still the
+        // fallback greeting (user hasn't sent anything yet).
+        if (prev.length === 1 && prev[0].role === "assistant") {
+          return [{ role: "assistant", content: contextualGreeting }];
         }
-        for (const item of result.goals) {
-          lines.push(`- Goal: ${item.text}`);
-        }
-        if (lines.length > 0) {
-          setTaskContext(lines.join("\n"));
-        }
+        return prev;
       });
-    }
+    });
   }, [chatMode, user, supabase]);
 
   const getListSetter = (key: "issues" | "goals" | "tasks") =>
