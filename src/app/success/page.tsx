@@ -33,8 +33,9 @@ function SuccessContent() {
   const { user, loading: authLoading, supabase } = useAuth();
   const [step, setStep] = useState<Step>("loading");
   const [stripeCustomerId, setStripeCustomerId] = useState<string | null>(null);
+  const [stripeEmail, setStripeEmail] = useState<string | null>(null);
 
-  // Retrieve the Stripe checkout session to get customer ID
+  // Retrieve the Stripe checkout session to get customer ID and email
   useEffect(() => {
     if (!sessionId) {
       setStep("auth");
@@ -46,6 +47,9 @@ function SuccessContent() {
       .then((data) => {
         if (data.customer_id) {
           setStripeCustomerId(data.customer_id);
+        }
+        if (data.customer_email) {
+          setStripeEmail(data.customer_email);
         }
         // Track trial started
         trackEvent("trial_started", { payment_status: data.payment_status });
@@ -144,11 +148,13 @@ function SuccessContent() {
   }
 
   // Auth step: show post-purchase account creation (CRO-optimized copy)
+  // Pass Stripe email as prefilledEmail to auto-send OTP and skip to code step
   if (step === "auth" && !user) {
     return (
       <AuthGate
         onAuthenticated={handleAuthenticated}
         variant="post-purchase"
+        prefilledEmail={stripeEmail ?? undefined}
       />
     );
   }
