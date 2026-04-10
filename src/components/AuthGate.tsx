@@ -74,11 +74,14 @@ export default function AuthGate({
     async (targetEmail: string): Promise<{ ok: boolean; error?: string }> => {
       if (!supabase) return { ok: false, error: "Auth not configured" };
 
+      // Magic link recipients should land directly inside the product at
+      // /chat, not on the marketing landing. The callback reads `next` from
+      // the query string and redirects there after exchanging the code.
       const { error } = await supabase.auth.signInWithOtp({
         email: targetEmail,
         options: {
           shouldCreateUser: true,
-          emailRedirectTo: `${window.location.origin}/api/auth/callback`,
+          emailRedirectTo: `${window.location.origin}/api/auth/callback?next=/chat`,
         },
       });
 
