@@ -9,7 +9,12 @@ import type { OnboardingData } from "@/lib/types";
 import type { NoteItem } from "@/components/LiveLists";
 import { useTaskStore } from "@/lib/useTaskStore";
 import { useAuth } from "@/lib/supabase/useAuth";
-import { saveTasks, loadActiveTasks } from "@/lib/supabase/data";
+import {
+  saveTasks,
+  loadActiveTasks,
+  updateTaskStatus,
+  deleteTask,
+} from "@/lib/supabase/data";
 
 type ListKey = "issues" | "goals" | "tasks";
 type View = "board" | "chat" | "checkin" | "voice";
@@ -29,6 +34,12 @@ export default function ChatPage() {
   const [ready, setReady] = useState(false);
   const [view, setView] = useState<View>("board");
   const [authTasks, setAuthTasks] = useState<AuthTasks>(EMPTY_AUTH_TASKS);
+  const [authCompletedIds, setAuthCompletedIds] = useState<Set<string>>(
+    () => new Set()
+  );
+  const [pendingSuggestion, setPendingSuggestion] = useState<string | null>(
+    null
+  );
 
   // Load onboarding data from localStorage
   useEffect(() => {
@@ -86,18 +97,57 @@ export default function ChatPage() {
     [user, supabase, store]
   );
 
-  const handleAuthTaskRemove = useCallback(
+  // Toggle an item as done. Persists to Supabase. Users can click again
+  // to un-done. Done items stay in the list with a strikethrough.
+  const handleToggleDone = useCallback(
+    (_listKey: ListKey, id: string) => {
+      const wasCompleted = authCompletedIds.has(id);
+      setAuthCompletedIds((prev) => {
+        const next = new Set(prev);
+        if (wasCompleted) {
+          next.delete(id);
+        } else {
+          next.add(id);
+        }
+        return next;
+      });
+      if (user && supabase) {
+        updateTaskStatus(
+          supabase,
+          id,
+          wasCompleted ? "active" : "completed"
+        );
+      }
+    },
+    [authCompletedIds, user, supabase]
+  );
+
+  // Permanently delete a task. Removes from the local list and from
+  // Supabase. Undo is not supported for MVP.
+  const handleDeleteTask = useCallback(
     (listKey: ListKey, id: string) => {
       setAuthTasks((prev) => ({
         ...prev,
         [listKey]: prev[listKey].filter((item) => item.id !== id),
       }));
-      // Note: we intentionally do not delete from Supabase here for MVP.
-      // Removing an item from the panel is a UX action, not a permanent
-      // delete, and matches the current LiveLists behavior elsewhere.
+      setAuthCompletedIds((prev) => {
+        if (!prev.has(id)) return prev;
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      if (user && supabase) {
+        deleteTask(supabase, id);
+      }
     },
-    []
+    [user, supabase]
   );
+
+  // When the user clicks a suggestion in the empty focus-panel state,
+  // stash it and TextConversation will pre-populate its input on mount.
+  const handleSuggestionClick = useCallback((text: string) => {
+    setPendingSuggestion(text);
+  }, []);
 
   const handleSignOut = useCallback(async () => {
     if (supabase) {
@@ -138,7 +188,10 @@ export default function ChatPage() {
           issues={authTasks.issues}
           goals={authTasks.goals}
           tasks={authTasks.tasks}
-          onRemove={handleAuthTaskRemove}
+          completedIds={authCompletedIds}
+          onToggleDone={handleToggleDone}
+          onDelete={handleDeleteTask}
+          onSuggestionClick={handleSuggestionClick}
         >
           <TextConversation
             onBack={() => setView("board")}
@@ -146,6 +199,7 @@ export default function ChatPage() {
             chatMode={view === "checkin" ? "checkin" : "chat"}
             onNoteAdded={handleNoteAdded}
             embedded
+            initialInput={pendingSuggestion ?? undefined}
           />
         </SplitPaneChatLayout>
       );

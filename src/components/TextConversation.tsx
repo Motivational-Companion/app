@@ -26,9 +26,15 @@ type Props = {
    * shows the inline task bar.
    */
   embedded?: boolean;
+  /**
+   * Optional seed text for the chat input. Used when the user clicks a
+   * suggested opener in the empty focus-panel state. Applied only on
+   * initial mount; subsequent typing is preserved.
+   */
+  initialInput?: string;
 };
 
-export default function TextConversation({ onBack, onboardingData, chatMode = "chat", onNoteAdded, existingTasks, embedded = false }: Props) {
+export default function TextConversation({ onBack, onboardingData, chatMode = "chat", onNoteAdded, existingTasks, embedded = false, initialInput }: Props) {
   const firstMessage = chatMode === "checkin"
     ? SAM_CHECKIN_FIRST_MESSAGE
     : onboardingData
@@ -37,7 +43,7 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
   const [messages, setMessages] = useState<ChatMessage[]>([
     { role: "assistant", content: firstMessage },
   ]);
-  const [input, setInput] = useState("");
+  const [input, setInput] = useState(initialInput ?? "");
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [taskContext, setTaskContext] = useState<string | null>(null);
