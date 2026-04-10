@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import TextConversation from "@/components/TextConversation";
 import Conversation from "@/components/Conversation";
 import Dashboard from "@/components/Dashboard";
@@ -40,6 +40,11 @@ export default function ChatPage() {
   const [pendingSuggestion, setPendingSuggestion] = useState<string | null>(
     null
   );
+  // Tracks whether the initial auth'd route decision has been made. We
+  // only auto-route (checkin vs chat) on the FIRST load. After that,
+  // user-driven navigation (back button, etc.) wins and we never kick
+  // them back to a view they didn't choose.
+  const initialAuthRouteDone = useRef(false);
 
   // Load onboarding data from localStorage
   useEffect(() => {
@@ -63,24 +68,24 @@ export default function ChatPage() {
   }, [ready, authLoading, user]);
 
   // Load authenticated user's active tasks from Supabase so the split-pane
-  // focus panel has a live data source. Also: if the user is a RETURNING
-  // user (has active items from a previous session), land them directly
-  // in a check-in conversation instead of the board. That is the daily
-  // use loop: open app -> Sam greets with context -> talk.
+  // focus panel has a live data source. On the FIRST successful load we
+  // also route the user based on their state: returning users (with
+  // active items) drop into check-in mode, new users drop into the main
+  // chat. Subsequent re-fires of this effect do not touch the view —
+  // user-driven navigation wins.
   useEffect(() => {
     if (!user || !supabase || !ready) return;
     let cancelled = false;
     loadActiveTasks(supabase, user.id).then((result) => {
       if (cancelled) return;
       setAuthTasks(result);
+
+      if (initialAuthRouteDone.current) return;
+      initialAuthRouteDone.current = true;
+
       const hasItems =
         result.issues.length + result.goals.length + result.tasks.length > 0;
-      if (hasItems) {
-        setView("checkin");
-      } else {
-        // First-timer (just paid, no items yet) -> drop straight into chat
-        setView("chat");
-      }
+      setView(hasItems ? "checkin" : "chat");
     });
     return () => {
       cancelled = true;
@@ -108,50 +113,75 @@ export default function ChatPage() {
     [user, supabase, store]
   );
 
-  // Toggle an item as done. Persists to Supabase. Users can click again
-  // to un-done. Done items stay in the list with a strikethrough.
+  // Toggle an item as done. Optimistically updates local state, then
+  // persists to Supabase. If the write fails the local state is
+  // reverted so the UI stays consistent with the database.
   const handleToggleDone = useCallback(
-    (_listKey: ListKey, id: string) => {
+    async (_listKey: ListKey, id: string) => {
       const wasCompleted = authCompletedIds.has(id);
+
       setAuthCompletedIds((prev) => {
         const next = new Set(prev);
-        if (wasCompleted) {
-          next.delete(id);
-        } else {
-          next.add(id);
-        }
+        if (wasCompleted) next.delete(id);
+        else next.add(id);
         return next;
       });
-      if (user && supabase) {
-        updateTaskStatus(
+
+      if (!user || !supabase) return;
+      try {
+        await updateTaskStatus(
           supabase,
           id,
           wasCompleted ? "active" : "completed"
         );
+      } catch (err) {
+        console.error("Failed to update task status, reverting:", err);
+        setAuthCompletedIds((prev) => {
+          const next = new Set(prev);
+          if (wasCompleted) next.add(id);
+          else next.delete(id);
+          return next;
+        });
       }
     },
     [authCompletedIds, user, supabase]
   );
 
-  // Permanently delete a task. Removes from the local list and from
-  // Supabase. Undo is not supported for MVP.
+  // Permanently delete a task. Optimistic delete + revert on failure.
   const handleDeleteTask = useCallback(
-    (listKey: ListKey, id: string) => {
+    async (listKey: ListKey, id: string) => {
+      // Snapshot pre-delete state so we can revert if Supabase rejects
+      const previousItems = authTasks[listKey];
+      const previousCompleted = authCompletedIds.has(id);
+
       setAuthTasks((prev) => ({
         ...prev,
         [listKey]: prev[listKey].filter((item) => item.id !== id),
       }));
-      setAuthCompletedIds((prev) => {
-        if (!prev.has(id)) return prev;
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
-      if (user && supabase) {
-        deleteTask(supabase, id);
+      if (previousCompleted) {
+        setAuthCompletedIds((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+      }
+
+      if (!user || !supabase) return;
+      try {
+        await deleteTask(supabase, id);
+      } catch (err) {
+        console.error("Failed to delete task, reverting:", err);
+        setAuthTasks((prev) => ({ ...prev, [listKey]: previousItems }));
+        if (previousCompleted) {
+          setAuthCompletedIds((prev) => {
+            const next = new Set(prev);
+            next.add(id);
+            return next;
+          });
+        }
       }
     },
-    [user, supabase]
+    [authTasks, authCompletedIds, user, supabase]
   );
 
   // When the user clicks a suggestion in the empty focus-panel state,

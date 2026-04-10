@@ -71,6 +71,9 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  // Set as soon as the user sends their first message so we stop
+  // trying to upgrade the initial greeting (would overwrite context).
+  const userHasSentRef = useRef(false);
 
   // ── Supabase persistence (invisible to user) ──
   const { user, supabase } = useAuth();
@@ -116,10 +119,13 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
         result.tasks.length + result.goals.length + result.issues.length > 0;
       if (!hasItems) return;
 
+      // Only upgrade the initial greeting if the user has not yet sent
+      // a message. Using a ref instead of array length protects against
+      // the race where the user types quickly before loadActiveTasks
+      // resolves.
+      if (userHasSentRef.current) return;
       const contextualGreeting = buildCheckinFirstMessage(result);
       setMessages((prev) => {
-        // Replace the first assistant message only if it's still the
-        // fallback greeting (user hasn't sent anything yet).
         if (prev.length === 1 && prev[0].role === "assistant") {
           return [{ role: "assistant", content: contextualGreeting }];
         }
@@ -212,6 +218,7 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
 
     setInput("");
     setError(null);
+    userHasSentRef.current = true;
 
     const userMessage: ChatMessage = { role: "user", content: text };
     const updatedMessages = [...messages, userMessage];
