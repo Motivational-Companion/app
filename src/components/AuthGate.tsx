@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 type Variant = "signin" | "post-purchase";
@@ -9,14 +9,21 @@ type Props = {
   onAuthenticated: () => void;
   onSkip?: () => void;
   variant?: Variant;
+  /**
+   * If provided, AuthGate automatically sends an OTP to this email on mount
+   * and starts the user on the code entry step. Used post-purchase where
+   * we already have the email from Stripe checkout.
+   */
+  prefilledEmail?: string;
 };
+
+const RESEND_COOLDOWN_SECONDS = 30;
 
 const COPY: Record<Variant, {
   heading: string;
   subheading: string;
   emailCta: string;
   emailPlaceholder: string;
-  emailSentInfo: string;
   codeHeading: string;
   codeSubheading: string;
   codeCta: string;
@@ -26,22 +33,17 @@ const COPY: Record<Variant, {
     subheading: "Sign in to continue where you left off",
     emailCta: "Send sign-in link",
     emailPlaceholder: "Your email address",
-    emailSentInfo: "We sent you an email with a 6-digit code and a sign-in link.",
     codeHeading: "Check your email",
-    codeSubheading: "Enter the 6-digit code we sent you",
+    codeSubheading: "We just sent a 6-digit code to",
     codeCta: "Sign in",
   },
   "post-purchase": {
     heading: "You're in. One last step.",
-    subheading:
-      "Save your progress and unlock daily check-ins with Sam. Your 7-day free trial has started.",
+    subheading: "Save your progress and unlock daily check-ins with Sam.",
     emailCta: "Create my account",
     emailPlaceholder: "Your email",
-    emailSentInfo:
-      "We sent a 6-digit code to your email. Enter it below to unlock Sam.",
     codeHeading: "Almost there",
-    codeSubheading:
-      "Enter the 6-digit code we just sent to your email to access Sam.",
+    codeSubheading: "We just sent a 6-digit code to",
     codeCta: "Unlock Sam",
   },
 };
@@ -50,57 +52,100 @@ export default function AuthGate({
   onAuthenticated,
   onSkip,
   variant = "signin",
+  prefilledEmail,
 }: Props) {
   const copy = COPY[variant];
-  const [step, setStep] = useState<"email" | "code">("email");
-  const [email, setEmail] = useState("");
+  const [step, setStep] = useState<"email" | "code">(
+    prefilledEmail ? "code" : "email"
+  );
+  const [email, setEmail] = useState(prefilledEmail ?? "");
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [info, setInfo] = useState<string | null>(null);
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const [autoSendState, setAutoSendState] = useState<
+    "idle" | "sending" | "sent" | "failed"
+  >(prefilledEmail ? "sending" : "idle");
 
   const supabase = useMemo(() => createClient(), []);
+  const autoSendStarted = useRef(false);
 
-  if (!supabase) {
-    // Supabase not configured — skip auth (dev/preview fallback)
-    onAuthenticated();
-    return null;
-  }
+  const sendCode = useCallback(
+    async (targetEmail: string): Promise<{ ok: boolean; error?: string }> => {
+      if (!supabase) return { ok: false, error: "Auth not configured" };
 
-  const handleSendCode = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
-    setInfo(null);
-
-    try {
       const { error } = await supabase.auth.signInWithOtp({
-        email,
+        email: targetEmail,
         options: {
           shouldCreateUser: true,
           emailRedirectTo: `${window.location.origin}/api/auth/callback`,
         },
       });
 
-      if (error) {
-        setError(error.message);
-        return;
-      }
+      if (error) return { ok: false, error: error.message };
+      return { ok: true };
+    },
+    [supabase]
+  );
 
-      setInfo(copy.emailSentInfo);
-      setStep("code");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong");
-    } finally {
-      setLoading(false);
+  // Skip auth entirely if Supabase is not configured (dev/preview fallback)
+  useEffect(() => {
+    if (!supabase) onAuthenticated();
+  }, [supabase, onAuthenticated]);
+
+  // Auto-send OTP on mount when prefilledEmail is provided
+  useEffect(() => {
+    if (!prefilledEmail || !supabase || autoSendStarted.current) return;
+    autoSendStarted.current = true;
+
+    let cancelled = false;
+    sendCode(prefilledEmail).then((result) => {
+      if (cancelled) return;
+      if (result.ok) {
+        setAutoSendState("sent");
+        setResendCooldown(RESEND_COOLDOWN_SECONDS);
+      } else {
+        setAutoSendState("failed");
+        setError(result.error ?? "Failed to send code");
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [prefilledEmail, supabase, sendCode]);
+
+  // Resend cooldown countdown
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = setTimeout(() => setResendCooldown((s) => s - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [resendCooldown]);
+
+  if (!supabase) return null;
+
+  const handleSendFromEmailStep = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+
+    const result = await sendCode(email);
+    setLoading(false);
+
+    if (!result.ok) {
+      setError(result.error ?? "Something went wrong");
+      return;
     }
+
+    setStep("code");
+    setAutoSendState("sent");
+    setResendCooldown(RESEND_COOLDOWN_SECONDS);
   };
 
   const handleVerifyCode = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
-    setInfo(null);
 
     try {
       const { error } = await supabase.auth.verifyOtp({
@@ -122,19 +167,63 @@ export default function AuthGate({
     }
   };
 
-  const handleBackToEmail = () => {
+  const handleResend = async () => {
+    if (resendCooldown > 0 || loading || autoSendState === "sending") return;
+    setLoading(true);
+    setError(null);
+
+    const result = await sendCode(email);
+    setLoading(false);
+
+    if (result.ok) {
+      setResendCooldown(RESEND_COOLDOWN_SECONDS);
+    } else {
+      setError(result.error ?? "Failed to resend code");
+    }
+  };
+
+  const handleUseDifferentEmail = () => {
     setStep("email");
     setCode("");
+    setEmail("");
     setError(null);
-    setInfo(null);
+    setAutoSendState("idle");
+    setResendCooldown(0);
+    // Intentionally do NOT reset autoSendStarted.current — the auto-send is a
+    // one-time behavior per mount. Resetting could cause a second send if the
+    // parent re-renders with the same prefilledEmail.
   };
 
   return (
     <div className="min-h-[100dvh] bg-bg flex justify-center items-start md:items-center md:py-12 md:px-4">
       <div className="w-full max-w-[480px] flex flex-col px-6 pb-8 pt-8 md:rounded-3xl md:shadow-xl md:border md:border-border">
+        {variant === "post-purchase" && (
+          <div className="mb-5 flex justify-center">
+            <span className="inline-flex items-center gap-1.5 bg-success/10 text-success px-3 py-1.5 rounded-full text-xs font-semibold">
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="3"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+              Your 7-day free trial has started
+            </span>
+          </div>
+        )}
+
         <div className="text-center mb-6">
           <div className="w-16 h-16 rounded-full bg-accent-soft flex items-center justify-center mx-auto mb-4">
-            <span className="text-primary-dark font-display text-2xl">
+            <span
+              className="text-primary-dark font-display text-2xl"
+              aria-hidden="true"
+            >
               {step === "code" ? "\u2709" : "S"}
             </span>
           </div>
@@ -144,22 +233,28 @@ export default function AuthGate({
           <p className="text-text-soft text-sm">
             {step === "code" ? copy.codeSubheading : copy.subheading}
           </p>
+          {step === "code" && email && (
+            <p className="text-primary font-semibold text-sm mt-1 break-all">
+              {email}
+            </p>
+          )}
         </div>
 
         {error && (
-          <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 mb-4">
+          <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 mb-4" role="alert">
             <p className="text-sm text-red-700">{error}</p>
           </div>
         )}
 
-        {info && !error && step === "code" && (
-          <div className="bg-accent-soft/50 border border-accent/20 rounded-xl px-4 py-3 mb-4">
-            <p className="text-sm text-primary-dark">{info}</p>
+        {step === "code" && autoSendState === "sending" && (
+          <div className="flex items-center justify-center gap-2 mb-4 text-text-muted text-sm">
+            <div className="w-4 h-4 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+            Sending code...
           </div>
         )}
 
         {step === "email" ? (
-          <form onSubmit={handleSendCode} className="space-y-3">
+          <form onSubmit={handleSendFromEmailStep} className="space-y-3">
             <input
               type="email"
               value={email}
@@ -184,8 +279,7 @@ export default function AuthGate({
             </button>
 
             <p className="text-xs text-text-muted text-center pt-2">
-              We&apos;ll email you a link and a 6-digit code. No password
-              needed.
+              We&apos;ll email you a 6-digit code. No password needed.
             </p>
           </form>
         ) : (
@@ -202,6 +296,7 @@ export default function AuthGate({
               inputMode="numeric"
               pattern="[0-9]{6}"
               maxLength={6}
+              aria-label="6-digit verification code"
               className="w-full px-4 py-4 rounded-xl border border-border bg-bg text-2xl text-text text-center tracking-[0.4em] font-mono
                          placeholder:text-text-muted focus:outline-none focus:border-primary transition-colors"
             />
@@ -216,13 +311,25 @@ export default function AuthGate({
               {loading ? "Verifying..." : copy.codeCta}
             </button>
 
-            <button
-              type="button"
-              onClick={handleBackToEmail}
-              className="w-full text-sm text-text-muted hover:text-text-soft transition-colors pt-2"
-            >
-              Use a different email
-            </button>
+            <div className="flex items-center justify-between pt-3">
+              <button
+                type="button"
+                onClick={handleUseDifferentEmail}
+                className="text-sm text-text-muted hover:text-text-soft transition-colors"
+              >
+                Use a different email
+              </button>
+              <button
+                type="button"
+                onClick={handleResend}
+                disabled={resendCooldown > 0 || loading}
+                className="text-sm text-primary hover:text-primary-dark transition-colors disabled:text-text-muted disabled:cursor-default"
+              >
+                {resendCooldown > 0
+                  ? `Resend in ${resendCooldown}s`
+                  : "Resend code"}
+              </button>
+            </div>
           </form>
         )}
 
