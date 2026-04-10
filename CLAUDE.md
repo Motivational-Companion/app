@@ -7,10 +7,20 @@ Production SaaS app. Treat every change with production engineering discipline.
 For all non-trivial work:
 
 1. **Create a feature branch** — never commit directly to `main`
-2. **Run `/simplify`** on changed files before requesting review
-3. **Run `/code-review`** (or code-reviewer agent) on the diff
-4. **Open a pull request** with a clear summary of what and why
-5. **Merge only after review passes** and CI is green
+2. **Implement the change** on the branch (code + tests)
+3. **Run `/simplify`** on the changed files. Address real findings. This step
+   is **mandatory before opening a PR** — not after, not optional.
+4. **Run `/code-review`** (or code-reviewer agent) on the full diff. Address
+   real findings. Also mandatory before opening a PR.
+5. **Run the full test suite** (`npx vitest run`) and the production build
+   (`npx next build`). Both must pass.
+6. **Open the pull request** with a clear summary, test plan, and manual
+   verification checklist.
+7. **Merge only after** review passes and CI is green.
+
+**The simplify + code-review gates are non-negotiable.** Do not open a PR
+without them. They catch race conditions, memory leaks, dead state, and
+duplication before they hit main. Skipping them means the PR is incomplete.
 
 **Exceptions (direct-to-main ok):**
 - Typo fixes
@@ -44,12 +54,16 @@ Every new feature or material change must ship with:
    - Cover the happy path, at least one error path, and any conditional
      branching logic
    - Live under `src/test/` following existing naming conventions
+   - Run with `npm test` or `npx vitest run`
 
-2. **End-to-end test** covering the user-facing flow
+2. **End-to-end test** (Playwright)
    - Exercise the feature as a user would (click, type, navigate)
-   - Assert on observable outcomes (DOM, network calls, persisted data)
-   - For features touching Stripe, Supabase, or Claude, use mocks or test
-     fixtures rather than hitting production APIs
+   - Assert on observable outcomes (DOM, URL, network calls)
+   - Live under `e2e/` following existing naming conventions
+   - Use the mock helpers in `e2e/fixtures/mocks.ts` for Stripe, Supabase,
+     and Claude — never hit production APIs from tests
+   - Run with `npm run test:e2e` or `npm run test:e2e:ui`
+   - See `e2e/README.md` for patterns
 
 3. **Manual verification checklist** in the PR description
    - Step-by-step flow the reviewer can run locally

@@ -1,13 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-
-const PROTECTED_ROUTES = ["/chat"];
-
-function isProtectedRoute(pathname: string): boolean {
-  return PROTECTED_ROUTES.some(
-    (route) => pathname === route || pathname.startsWith(route + "/")
-  );
-}
+import { isProtectedRoute } from "@/lib/routes";
 
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
