@@ -202,8 +202,9 @@ describe("AuthGate", () => {
         /6-digit verification code/i
       ) as HTMLInputElement;
 
+      // fireEvent.change with the full value covers both paste and
+      // fast typing. Both trigger auto-submit once the 6th digit lands.
       fireEvent.change(codeInput, { target: { value: "123456" } });
-      fireEvent.click(screen.getByText(/unlock sam/i));
 
       await waitFor(() => {
         expect(mockVerifyOtp).toHaveBeenCalledWith(
@@ -213,6 +214,32 @@ describe("AuthGate", () => {
             type: "email",
           })
         );
+      });
+    });
+
+    it("auto-submits when the 6th digit is entered", async () => {
+      render(
+        <AuthGate
+          onAuthenticated={vi.fn()}
+          variant="post-purchase"
+          prefilledEmail="buyer@example.com"
+        />
+      );
+
+      await waitFor(() => {
+        expect(mockSignInWithOtp).toHaveBeenCalled();
+      });
+
+      const codeInput = screen.getByLabelText(/6-digit verification code/i);
+
+      // 5 digits should NOT auto-submit
+      fireEvent.change(codeInput, { target: { value: "12345" } });
+      expect(mockVerifyOtp).not.toHaveBeenCalled();
+
+      // 6 digits SHOULD auto-submit
+      fireEvent.change(codeInput, { target: { value: "123456" } });
+      await waitFor(() => {
+        expect(mockVerifyOtp).toHaveBeenCalledTimes(1);
       });
     });
 
@@ -232,14 +259,13 @@ describe("AuthGate", () => {
 
       const codeInput = screen.getByLabelText(/6-digit verification code/i);
       fireEvent.change(codeInput, { target: { value: "123456" } });
-      fireEvent.click(screen.getByText(/unlock sam/i));
 
       await waitFor(() => {
         expect(onAuthenticated).toHaveBeenCalled();
       });
     });
 
-    it("shows error when verifyOtp fails", async () => {
+    it("shows error and clears the code when verifyOtp fails", async () => {
       mockVerifyOtp.mockResolvedValueOnce({
         data: null,
         error: { message: "Invalid code" },
@@ -257,12 +283,17 @@ describe("AuthGate", () => {
         expect(mockSignInWithOtp).toHaveBeenCalled();
       });
 
-      const codeInput = screen.getByLabelText(/6-digit verification code/i);
+      const codeInput = screen.getByLabelText(
+        /6-digit verification code/i
+      ) as HTMLInputElement;
       fireEvent.change(codeInput, { target: { value: "999999" } });
-      fireEvent.click(screen.getByText(/unlock sam/i));
 
+      // Error is shown AND the code input is cleared so the user can retype
       await waitFor(() => {
         expect(screen.getByText(/invalid code/i)).toBeInTheDocument();
+      });
+      await waitFor(() => {
+        expect(codeInput.value).toBe("");
       });
     });
 

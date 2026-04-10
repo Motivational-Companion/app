@@ -235,8 +235,6 @@ export default function ChatPage() {
             <p className="text-sm text-text-soft">Start a conversation with Sam to build your focus areas.</p>
           </div>
         )}
-
-        <p className="mt-8 text-xs text-text-muted text-center">Powered by Claude</p>
       </div>
     </div>
   );

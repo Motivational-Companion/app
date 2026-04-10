@@ -427,11 +427,6 @@ export default function Dashboard({
             </div>
           </div>
         )}
-
-        {/* Footer */}
-        <p className="mt-8 text-xs text-text-muted text-center">
-          Text powered by Claude. Voice powered by ElevenLabs.
-        </p>
       </div>
     </div>
   );
