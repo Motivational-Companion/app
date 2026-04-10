@@ -4,14 +4,23 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import TextConversation from "@/components/TextConversation";
 import Conversation from "@/components/Conversation";
 import Dashboard from "@/components/Dashboard";
+import SplitPaneChatLayout from "@/components/SplitPaneChatLayout";
 import type { OnboardingData } from "@/lib/types";
 import type { NoteItem } from "@/components/LiveLists";
 import { useTaskStore } from "@/lib/useTaskStore";
 import { useAuth } from "@/lib/supabase/useAuth";
-import { saveTasks } from "@/lib/supabase/data";
+import { saveTasks, loadActiveTasks } from "@/lib/supabase/data";
 
 type ListKey = "issues" | "goals" | "tasks";
 type View = "board" | "chat" | "checkin" | "voice";
+
+type AuthTasks = {
+  issues: NoteItem[];
+  goals: NoteItem[];
+  tasks: NoteItem[];
+};
+
+const EMPTY_AUTH_TASKS: AuthTasks = { issues: [], goals: [], tasks: [] };
 
 export default function ChatPage() {
   const { user, loading: authLoading, supabase } = useAuth();
@@ -19,6 +28,7 @@ export default function ChatPage() {
   const [onboardingData, setOnboardingData] = useState<OnboardingData | null>(null);
   const [ready, setReady] = useState(false);
   const [view, setView] = useState<View>("board");
+  const [authTasks, setAuthTasks] = useState<AuthTasks>(EMPTY_AUTH_TASKS);
 
   // Load onboarding data from localStorage
   useEffect(() => {
@@ -41,7 +51,23 @@ export default function ChatPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, authLoading, user]);
 
-  // Save note to Supabase for authenticated users, localStorage for anonymous
+  // Load authenticated user's active tasks from Supabase so the split-pane
+  // focus panel has a live data source.
+  useEffect(() => {
+    if (!user || !supabase) return;
+    let cancelled = false;
+    loadActiveTasks(supabase, user.id).then((result) => {
+      if (cancelled) return;
+      setAuthTasks(result);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [user, supabase]);
+
+  // Save note to Supabase for authenticated users, localStorage for anonymous.
+  // For auth'd users we also update local state immediately so the focus
+  // panel reflects the new item without waiting for a Supabase refetch.
   const handleNoteAdded = useCallback(
     (listKey: ListKey, item: NoteItem) => {
       if (user && supabase) {
@@ -49,11 +75,28 @@ export default function ChatPage() {
           : listKey === "goals" ? "goal" as const
           : "task" as const;
         saveTasks(supabase, user.id, listType, [item]);
+        setAuthTasks((prev) => ({
+          ...prev,
+          [listKey]: [...prev[listKey], item],
+        }));
       } else {
         store.addItem(listKey, item);
       }
     },
     [user, supabase, store]
+  );
+
+  const handleAuthTaskRemove = useCallback(
+    (listKey: ListKey, id: string) => {
+      setAuthTasks((prev) => ({
+        ...prev,
+        [listKey]: prev[listKey].filter((item) => item.id !== id),
+      }));
+      // Note: we intentionally do not delete from Supabase here for MVP.
+      // Removing an item from the panel is a UX action, not a permanent
+      // delete, and matches the current LiveLists behavior elsewhere.
+    },
+    []
   );
 
   const handleSignOut = useCallback(async () => {
@@ -86,6 +129,29 @@ export default function ChatPage() {
 
   // ── Chat or Check-in view ──
   if (view === "chat" || view === "checkin") {
+    // Authenticated users see the split-pane layout on desktop (chat on
+    // the left, live focus panel on the right). Mobile falls back to the
+    // standalone TextConversation with its own collapsible task bar.
+    if (user && supabase) {
+      return (
+        <SplitPaneChatLayout
+          issues={authTasks.issues}
+          goals={authTasks.goals}
+          tasks={authTasks.tasks}
+          onRemove={handleAuthTaskRemove}
+        >
+          <TextConversation
+            onBack={() => setView("board")}
+            onboardingData={onboardingData}
+            chatMode={view === "checkin" ? "checkin" : "chat"}
+            onNoteAdded={handleNoteAdded}
+            embedded
+          />
+        </SplitPaneChatLayout>
+      );
+    }
+
+    // Unauthenticated fallback (demo / dev)
     return (
       <TextConversation
         onBack={() => setView("board")}
@@ -103,6 +169,7 @@ export default function ChatPage() {
       <Conversation
         onBack={() => setView("board")}
         onboardingData={onboardingData}
+        onNoteAdded={handleNoteAdded}
       />
     );
   }
@@ -126,7 +193,7 @@ export default function ChatPage() {
 
   return (
     <div className="min-h-[100dvh] bg-bg flex justify-center items-start md:items-center md:py-12 md:px-4">
-      <div className="w-full max-w-[480px] px-6 py-8 md:rounded-3xl md:shadow-xl md:border md:border-border bg-card">
+      <div className="w-full max-w-[480px] md:max-w-[720px] px-6 py-8 md:px-10 md:py-10 md:rounded-3xl md:shadow-xl md:border md:border-border bg-card">
         <div className="mb-6">
           <h1 className="font-display text-2xl font-semibold text-text">
             {new Date().getHours() < 12 ? "Good morning" : new Date().getHours() < 17 ? "Good afternoon" : "Good evening"}
@@ -228,15 +295,12 @@ export default function ChatPage() {
         )}
 
         {totalTasks === 0 && (
-          <div className="text-center py-6 mb-8">
-            <div className="w-12 h-12 rounded-full bg-accent-soft/50 flex items-center justify-center mx-auto mb-3">
-              <span className="text-primary text-xl">&#9825;</span>
-            </div>
-            <p className="text-sm text-text-soft">Start a conversation with Sam to build your focus areas.</p>
+          <div className="text-center py-8 mb-8">
+            <p className="text-sm text-text-soft max-w-xs mx-auto leading-relaxed">
+              Your focus areas will appear here as you talk to Sam.
+            </p>
           </div>
         )}
-
-        <p className="mt-8 text-xs text-text-muted text-center">Powered by Claude</p>
       </div>
     </div>
   );

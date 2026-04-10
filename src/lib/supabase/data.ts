@@ -65,6 +65,38 @@ export async function createConversation(
   return data.id;
 }
 
+/**
+ * Return the id of the user's current active conversation for the given mode,
+ * creating one if none exists. This is the single source of truth for
+ * "what conversation am I in right now" and prevents the bug where switching
+ * views inside /chat spawns a new conversation record per mount.
+ */
+export async function getOrCreateActiveConversation(
+  supabase: SupabaseClient,
+  userId: string,
+  mode: "text" | "voice"
+): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("conversations")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("mode", mode)
+    .is("ended_at", null)
+    .order("started_at", { ascending: false })
+    .limit(1);
+
+  if (error) {
+    console.error("Failed to look up active conversation:", error);
+    return null;
+  }
+
+  if (data && data.length > 0) {
+    return data[0].id;
+  }
+
+  return createConversation(supabase, userId, mode);
+}
+
 export async function saveMessage(
   supabase: SupabaseClient,
   conversationId: string,
