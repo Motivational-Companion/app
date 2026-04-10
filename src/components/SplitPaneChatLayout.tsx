@@ -8,8 +8,9 @@ type ListKey = "issues" | "goals" | "tasks";
 
 type Props = {
   /**
-   * The chat component rendered inside the left card. Usually a
-   * <TextConversation /> with `hideInlineLists` set.
+   * The chat component rendered inside the left card. Pass a
+   * <TextConversation embedded /> so it drops its own shell and
+   * inherits the card chrome from this layout.
    */
   children: ReactNode;
   issues: NoteItem[];
@@ -20,15 +21,19 @@ type Props = {
 };
 
 /**
- * Desktop-only split layout that shows the chat on the left and the user's
- * live focus areas (issues, goals, to-dos) on the right. On mobile, the
- * children render full-width and the task panel is hidden (the chat
- * component is expected to show its own collapsible task bar inline on
- * mobile).
+ * Responsive layout for the authenticated chat experience.
  *
- * This exists so authenticated users on desktop see the product metaphor
- * as it was intended: "a to-do list you talk to" — they talk to Sam in the
- * left pane and watch the list build in the right pane in real time.
+ * Mobile (<md): renders the chat as a full-width phone-card, and the
+ * child (TextConversation embedded) shows its own collapsible task bar.
+ * The dedicated focus panel is hidden.
+ *
+ * Desktop (>=md): renders a split pane — chat card on the left (520px
+ * fixed), live focus panel on the right (flex-1). The chat component's
+ * inline collapsible task bar is hidden on desktop via its own CSS so
+ * the focus panel is the single source of truth.
+ *
+ * The children are rendered exactly once — no double mounting, no
+ * double-instance chat state. Responsive behavior is CSS-only.
  */
 export default function SplitPaneChatLayout({
   children,
@@ -41,21 +46,16 @@ export default function SplitPaneChatLayout({
   const totalItems = issues.length + goals.length + tasks.length;
 
   return (
-    <div className="min-h-[100dvh] bg-bg">
-      {/* Mobile: pass-through. The chat component is responsible for its
-          own collapsible task bar on mobile. */}
-      <div className="md:hidden">{children}</div>
-
-      {/* Desktop: side-by-side chat + tasks */}
-      <div className="hidden md:flex justify-center items-start gap-6 p-6 max-w-[1200px] mx-auto">
-        {/* Chat card — fixed width for comfortable reading */}
-        <div className="w-[520px] shrink-0 h-[calc(100dvh-3rem)] max-h-[900px] bg-card rounded-3xl shadow-xl border border-border overflow-hidden flex flex-col">
+    <div className="min-h-[100dvh] bg-bg flex justify-center items-start md:items-center md:py-6 md:px-4">
+      <div className="w-full max-w-[480px] md:max-w-[1200px] md:flex md:gap-6">
+        {/* Chat card — phone width on mobile, fixed 520px on desktop */}
+        <div className="w-full md:w-[520px] md:shrink-0 h-[100dvh] md:h-[calc(100dvh-3rem)] md:max-h-[900px] bg-card md:rounded-3xl md:shadow-xl md:border md:border-border flex flex-col overflow-hidden">
           {children}
         </div>
 
-        {/* Focus panel — flex-1, always visible */}
-        <aside className="flex-1 min-w-0 h-[calc(100dvh-3rem)] max-h-[900px] bg-card rounded-3xl shadow-xl border border-border overflow-y-auto">
-          <div className="p-6">
+        {/* Focus panel — desktop only */}
+        <aside className="hidden md:flex md:flex-1 md:min-w-0 md:h-[calc(100dvh-3rem)] md:max-h-[900px] bg-card rounded-3xl shadow-xl border border-border overflow-y-auto">
+          <div className="p-6 w-full">
             <div className="mb-5">
               <h2 className="font-display text-xl font-semibold text-text">
                 Your focus

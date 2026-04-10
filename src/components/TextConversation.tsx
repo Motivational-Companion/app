@@ -18,9 +18,17 @@ type Props = {
   chatMode?: "chat" | "checkin";
   onNoteAdded?: (listKey: "issues" | "goals" | "tasks", item: NoteItem) => void;
   existingTasks?: string;
+  /**
+   * When true, the chat is rendered inside a parent card (e.g.
+   * SplitPaneChatLayout on desktop). The standalone mobile-phone card
+   * chrome is removed and the inline collapsible task bar is hidden on
+   * desktop (the parent provides a dedicated focus panel). Mobile still
+   * shows the inline task bar.
+   */
+  embedded?: boolean;
 };
 
-export default function TextConversation({ onBack, onboardingData, chatMode = "chat", onNoteAdded, existingTasks }: Props) {
+export default function TextConversation({ onBack, onboardingData, chatMode = "chat", onNoteAdded, existingTasks, embedded = false }: Props) {
   const firstMessage = chatMode === "checkin"
     ? SAM_CHECKIN_FIRST_MESSAGE
     : onboardingData
@@ -286,9 +294,18 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
   const totalNotes = issues.length + goals.length + tasks.length;
   const [listExpanded, setListExpanded] = useState(false);
 
+  // When embedded is set, the parent (e.g. SplitPaneChatLayout) provides
+  // its own card chrome, so drop the standalone shell styles.
+  const outerClass = embedded
+    ? "h-full flex flex-col"
+    : "min-h-[100dvh] bg-bg flex justify-center items-start md:items-center md:py-12 md:px-4";
+  const innerClass = embedded
+    ? "w-full h-full bg-card flex flex-col overflow-hidden"
+    : "w-full max-w-[480px] h-[100dvh] md:h-[85vh] bg-card md:rounded-3xl md:shadow-xl md:border md:border-border flex flex-col overflow-hidden";
+
   return (
-    <div className="min-h-[100dvh] bg-bg flex justify-center items-start md:items-center md:py-12 md:px-4">
-      <div className="w-full max-w-[480px] h-[100dvh] md:h-[85vh] bg-card md:rounded-3xl md:shadow-xl md:border md:border-border flex flex-col overflow-hidden">
+    <div className={outerClass}>
+      <div className={innerClass}>
         {/* Header */}
         <header className="flex items-center justify-between px-5 py-3 border-b border-border shrink-0">
           <div className="flex items-center gap-3">
@@ -386,9 +403,17 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
 
         </div>
 
-        {/* Collapsible list bar */}
+        {/* Collapsible list bar. When embedded in SplitPaneChatLayout we
+            only show this on mobile — desktop has a dedicated focus panel
+            next to the chat and doesn't need an inline bar. */}
         {totalNotes > 0 && (
-          <div className="border-t border-border shrink-0">
+          <div
+            className={
+              embedded
+                ? "md:hidden border-t border-border shrink-0"
+                : "border-t border-border shrink-0"
+            }
+          >
             <button
               onClick={() => setListExpanded(!listExpanded)}
               className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-bg/50 transition-colors"
