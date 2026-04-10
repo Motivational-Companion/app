@@ -193,7 +193,7 @@ export default function ChatPage() {
 
   return (
     <div className="min-h-[100dvh] bg-bg flex justify-center items-start md:items-center md:py-12 md:px-4">
-      <div className="w-full max-w-[480px] px-6 py-8 md:rounded-3xl md:shadow-xl md:border md:border-border bg-card">
+      <div className="w-full max-w-[480px] md:max-w-[720px] px-6 py-8 md:px-10 md:py-10 md:rounded-3xl md:shadow-xl md:border md:border-border bg-card">
         <div className="mb-6">
           <h1 className="font-display text-2xl font-semibold text-text">
             {new Date().getHours() < 12 ? "Good morning" : new Date().getHours() < 17 ? "Good afternoon" : "Good evening"}
@@ -295,15 +295,12 @@ export default function ChatPage() {
         )}
 
         {totalTasks === 0 && (
-          <div className="text-center py-6 mb-8">
-            <div className="w-12 h-12 rounded-full bg-accent-soft/50 flex items-center justify-center mx-auto mb-3">
-              <span className="text-primary text-xl">&#9825;</span>
-            </div>
-            <p className="text-sm text-text-soft">Start a conversation with Sam to build your focus areas.</p>
+          <div className="text-center py-8 mb-8">
+            <p className="text-sm text-text-soft max-w-xs mx-auto leading-relaxed">
+              Your focus areas will appear here as you talk to Sam.
+            </p>
           </div>
         )}
-
-        <p className="mt-8 text-xs text-text-muted text-center">Powered by Claude</p>
       </div>
     </div>
   );
