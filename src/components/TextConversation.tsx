@@ -2,7 +2,12 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import type { ChatMessage, OnboardingData } from "@/lib/types";
-import { SAM_FIRST_MESSAGE, buildReflectiveFirstMessage, SAM_CHECKIN_FIRST_MESSAGE } from "@/lib/sam-prompt";
+import {
+  SAM_FIRST_MESSAGE,
+  buildReflectiveFirstMessage,
+  SAM_CHECKIN_FIRST_MESSAGE,
+  buildCheckinFirstMessage,
+} from "@/lib/sam-prompt";
 import LiveLists, { type NoteItem } from "@/components/LiveLists";
 import { useAuth } from "@/lib/supabase/useAuth";
 import {
@@ -26,9 +31,15 @@ type Props = {
    * shows the inline task bar.
    */
   embedded?: boolean;
+  /**
+   * Optional seed text for the chat input. Used when the user clicks a
+   * suggested opener in the empty focus-panel state. Applied only on
+   * initial mount; subsequent typing is preserved.
+   */
+  initialInput?: string;
 };
 
-export default function TextConversation({ onBack, onboardingData, chatMode = "chat", onNoteAdded, existingTasks, embedded = false }: Props) {
+export default function TextConversation({ onBack, onboardingData, chatMode = "chat", onNoteAdded, existingTasks, embedded = false, initialInput }: Props) {
   const firstMessage = chatMode === "checkin"
     ? SAM_CHECKIN_FIRST_MESSAGE
     : onboardingData
@@ -37,7 +48,7 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
   const [messages, setMessages] = useState<ChatMessage[]>([
     { role: "assistant", content: firstMessage },
   ]);
-  const [input, setInput] = useState("");
+  const [input, setInput] = useState(initialInput ?? "");
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [taskContext, setTaskContext] = useState<string | null>(null);
@@ -60,6 +71,9 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  // Set as soon as the user sends their first message so we stop
+  // trying to upgrade the initial greeting (would overwrite context).
+  const userHasSentRef = useRef(false);
 
   // ── Supabase persistence (invisible to user) ──
   const { user, supabase } = useAuth();
@@ -82,22 +96,42 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, supabase]);
 
-  // Load active tasks for check-in mode context
+  // Load active tasks for check-in mode context + upgrade the generic
+  // "welcome back" greeting to a contextual one that references the
+  // user's most important active task.
   useEffect(() => {
-    if (chatMode === "checkin" && user && supabase) {
-      loadActiveTasks(supabase, user.id).then((result) => {
-        const lines: string[] = [];
-        for (const item of result.tasks) {
-          lines.push(`- ${item.text}${item.timeframe ? ` (${item.timeframe})` : ""}`);
+    if (chatMode !== "checkin" || !user || !supabase) return;
+    loadActiveTasks(supabase, user.id).then((result) => {
+      const lines: string[] = [];
+      for (const item of result.tasks) {
+        lines.push(`- ${item.text}${item.timeframe ? ` (${item.timeframe})` : ""}`);
+      }
+      for (const item of result.goals) {
+        lines.push(`- Goal: ${item.text}`);
+      }
+      if (lines.length > 0) {
+        setTaskContext(lines.join("\n"));
+      }
+
+      // Only upgrade if we have items — otherwise keep the fallback
+      // generic greeting that's already in state.
+      const hasItems =
+        result.tasks.length + result.goals.length + result.issues.length > 0;
+      if (!hasItems) return;
+
+      // Only upgrade the initial greeting if the user has not yet sent
+      // a message. Using a ref instead of array length protects against
+      // the race where the user types quickly before loadActiveTasks
+      // resolves.
+      if (userHasSentRef.current) return;
+      const contextualGreeting = buildCheckinFirstMessage(result);
+      setMessages((prev) => {
+        if (prev.length === 1 && prev[0].role === "assistant") {
+          return [{ role: "assistant", content: contextualGreeting }];
         }
-        for (const item of result.goals) {
-          lines.push(`- Goal: ${item.text}`);
-        }
-        if (lines.length > 0) {
-          setTaskContext(lines.join("\n"));
-        }
+        return prev;
       });
-    }
+    });
   }, [chatMode, user, supabase]);
 
   const getListSetter = (key: "issues" | "goals" | "tasks") =>
@@ -184,6 +218,7 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
 
     setInput("");
     setError(null);
+    userHasSentRef.current = true;
 
     const userMessage: ChatMessage = { role: "user", content: text };
     const updatedMessages = [...messages, userMessage];
@@ -329,10 +364,19 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
           </div>
         </header>
 
-        {/* Error banner */}
+        {/* Error banner. Detect specific upstream failures and show a
+            friendly explanation; fall back to the raw message otherwise. */}
         {error && (
-          <div className="px-4 py-2 bg-red-50 border-b border-red-200 shrink-0">
-            <p className="text-xs text-red-600">{error}</p>
+          <div className="px-5 py-3 bg-red-50 border-b border-red-200 shrink-0">
+            <p className="text-sm text-red-700 font-medium leading-snug">
+              {/credit balance|credit_balance|insufficient/i.test(error)
+                ? "Sam is temporarily unavailable (billing). Try again in a moment."
+                : /rate limit|429/i.test(error)
+                  ? "Too many messages at once. Give it a few seconds and try again."
+                  : /timeout|timed out/i.test(error)
+                    ? "Sam took too long to respond. Try sending that again."
+                    : error}
+            </p>
           </div>
         )}
 
@@ -446,19 +490,19 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
         )}
 
         {/* Input */}
-        <div className="px-4 pb-5 pt-3 border-t border-border shrink-0">
+        <div className="px-5 pb-5 pt-4 border-t border-border shrink-0">
           <div className="flex items-end gap-2">
             <textarea
               ref={inputRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Type a message..."
+              placeholder="Brain dump here. What's on your mind?"
               disabled={isStreaming}
-              rows={1}
-              className="flex-1 resize-none rounded-2xl border border-border bg-bg px-4 py-3 text-sm text-text
-                         placeholder:text-text-muted focus:outline-none focus:border-primary transition-colors
-                         disabled:opacity-50 max-h-32"
+              rows={2}
+              className="flex-1 resize-none rounded-2xl border border-border bg-bg px-4 py-3 text-[15px] text-text leading-snug
+                         placeholder:text-text-muted focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/15 transition-all
+                         disabled:opacity-50 min-h-[56px] max-h-32"
               style={{ fieldSizing: "content" } as React.CSSProperties}
             />
             <button

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import TextConversation from "@/components/TextConversation";
 import Conversation from "@/components/Conversation";
 import Dashboard from "@/components/Dashboard";
@@ -9,7 +9,12 @@ import type { OnboardingData } from "@/lib/types";
 import type { NoteItem } from "@/components/LiveLists";
 import { useTaskStore } from "@/lib/useTaskStore";
 import { useAuth } from "@/lib/supabase/useAuth";
-import { saveTasks, loadActiveTasks } from "@/lib/supabase/data";
+import {
+  saveTasks,
+  loadActiveTasks,
+  updateTaskStatus,
+  deleteTask,
+} from "@/lib/supabase/data";
 
 type ListKey = "issues" | "goals" | "tasks";
 type View = "board" | "chat" | "checkin" | "voice";
@@ -29,6 +34,17 @@ export default function ChatPage() {
   const [ready, setReady] = useState(false);
   const [view, setView] = useState<View>("board");
   const [authTasks, setAuthTasks] = useState<AuthTasks>(EMPTY_AUTH_TASKS);
+  const [authCompletedIds, setAuthCompletedIds] = useState<Set<string>>(
+    () => new Set()
+  );
+  const [pendingSuggestion, setPendingSuggestion] = useState<string | null>(
+    null
+  );
+  // Tracks whether the initial auth'd route decision has been made. We
+  // only auto-route (checkin vs chat) on the FIRST load. After that,
+  // user-driven navigation (back button, etc.) wins and we never kick
+  // them back to a view they didn't choose.
+  const initialAuthRouteDone = useRef(false);
 
   // Load onboarding data from localStorage
   useEffect(() => {
@@ -52,18 +68,29 @@ export default function ChatPage() {
   }, [ready, authLoading, user]);
 
   // Load authenticated user's active tasks from Supabase so the split-pane
-  // focus panel has a live data source.
+  // focus panel has a live data source. On the FIRST successful load we
+  // also route the user based on their state: returning users (with
+  // active items) drop into check-in mode, new users drop into the main
+  // chat. Subsequent re-fires of this effect do not touch the view —
+  // user-driven navigation wins.
   useEffect(() => {
-    if (!user || !supabase) return;
+    if (!user || !supabase || !ready) return;
     let cancelled = false;
     loadActiveTasks(supabase, user.id).then((result) => {
       if (cancelled) return;
       setAuthTasks(result);
+
+      if (initialAuthRouteDone.current) return;
+      initialAuthRouteDone.current = true;
+
+      const hasItems =
+        result.issues.length + result.goals.length + result.tasks.length > 0;
+      setView(hasItems ? "checkin" : "chat");
     });
     return () => {
       cancelled = true;
     };
-  }, [user, supabase]);
+  }, [user, supabase, ready]);
 
   // Save note to Supabase for authenticated users, localStorage for anonymous.
   // For auth'd users we also update local state immediately so the focus
@@ -86,18 +113,82 @@ export default function ChatPage() {
     [user, supabase, store]
   );
 
-  const handleAuthTaskRemove = useCallback(
-    (listKey: ListKey, id: string) => {
+  // Toggle an item as done. Optimistically updates local state, then
+  // persists to Supabase. If the write fails the local state is
+  // reverted so the UI stays consistent with the database.
+  const handleToggleDone = useCallback(
+    async (_listKey: ListKey, id: string) => {
+      const wasCompleted = authCompletedIds.has(id);
+
+      setAuthCompletedIds((prev) => {
+        const next = new Set(prev);
+        if (wasCompleted) next.delete(id);
+        else next.add(id);
+        return next;
+      });
+
+      if (!user || !supabase) return;
+      try {
+        await updateTaskStatus(
+          supabase,
+          id,
+          wasCompleted ? "active" : "completed"
+        );
+      } catch (err) {
+        console.error("Failed to update task status, reverting:", err);
+        setAuthCompletedIds((prev) => {
+          const next = new Set(prev);
+          if (wasCompleted) next.add(id);
+          else next.delete(id);
+          return next;
+        });
+      }
+    },
+    [authCompletedIds, user, supabase]
+  );
+
+  // Permanently delete a task. Optimistic delete + revert on failure.
+  const handleDeleteTask = useCallback(
+    async (listKey: ListKey, id: string) => {
+      // Snapshot pre-delete state so we can revert if Supabase rejects
+      const previousItems = authTasks[listKey];
+      const previousCompleted = authCompletedIds.has(id);
+
       setAuthTasks((prev) => ({
         ...prev,
         [listKey]: prev[listKey].filter((item) => item.id !== id),
       }));
-      // Note: we intentionally do not delete from Supabase here for MVP.
-      // Removing an item from the panel is a UX action, not a permanent
-      // delete, and matches the current LiveLists behavior elsewhere.
+      if (previousCompleted) {
+        setAuthCompletedIds((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+      }
+
+      if (!user || !supabase) return;
+      try {
+        await deleteTask(supabase, id);
+      } catch (err) {
+        console.error("Failed to delete task, reverting:", err);
+        setAuthTasks((prev) => ({ ...prev, [listKey]: previousItems }));
+        if (previousCompleted) {
+          setAuthCompletedIds((prev) => {
+            const next = new Set(prev);
+            next.add(id);
+            return next;
+          });
+        }
+      }
     },
-    []
+    [authTasks, authCompletedIds, user, supabase]
   );
+
+  // When the user clicks a suggestion in the empty focus-panel state,
+  // stash it and TextConversation will pre-populate its input on mount.
+  const handleSuggestionClick = useCallback((text: string) => {
+    setPendingSuggestion(text);
+  }, []);
 
   const handleSignOut = useCallback(async () => {
     if (supabase) {
@@ -138,7 +229,10 @@ export default function ChatPage() {
           issues={authTasks.issues}
           goals={authTasks.goals}
           tasks={authTasks.tasks}
-          onRemove={handleAuthTaskRemove}
+          completedIds={authCompletedIds}
+          onToggleDone={handleToggleDone}
+          onDelete={handleDeleteTask}
+          onSuggestionClick={handleSuggestionClick}
         >
           <TextConversation
             onBack={() => setView("board")}
@@ -146,6 +240,7 @@ export default function ChatPage() {
             chatMode={view === "checkin" ? "checkin" : "chat"}
             onNoteAdded={handleNoteAdded}
             embedded
+            initialInput={pendingSuggestion ?? undefined}
           />
         </SplitPaneChatLayout>
       );
