@@ -29,7 +29,10 @@ async function navigateToPaywall(page: Page) {
       await continueBtn.click();
       // Wait for transition animation + new screen render
       await page.waitForFunction(
-        () => !document.querySelector("[data-transitioning=true]"),
+        () =>
+          document
+            .querySelector("[data-quiz-shell]")
+            ?.getAttribute("data-transitioning") === "false",
         { timeout: 2000 }
       ).catch(() => {});
       continue;

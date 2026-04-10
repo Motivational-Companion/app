@@ -778,7 +778,11 @@ function ScreenShell({
   children: React.ReactNode;
 }) {
   return (
-    <div className="min-h-[100dvh] bg-bg flex justify-center items-start md:items-center md:py-12 md:px-4">
+    <div
+      className="min-h-[100dvh] bg-bg flex justify-center items-start md:items-center md:py-12 md:px-4"
+      data-quiz-shell
+      data-transitioning={transitioning ? "true" : "false"}
+    >
       <div
         className={`w-full max-w-[480px] flex flex-col px-6 pb-8 pt-4 md:rounded-3xl md:shadow-xl md:border md:border-border transition-all duration-300 ${
           transitioning
