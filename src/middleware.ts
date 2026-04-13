@@ -35,8 +35,10 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
+  const pathname = request.nextUrl.pathname;
+
   // Gate protected routes behind auth + active subscription
-  if (isProtectedRoute(request.nextUrl.pathname)) {
+  if (isProtectedRoute(pathname)) {
     if (!user) {
       return NextResponse.redirect(new URL("/", request.url));
     }
@@ -51,6 +53,21 @@ export async function middleware(request: NextRequest) {
     const status = profile?.subscription_status;
     if (status !== "active" && status !== "trialing") {
       return NextResponse.redirect(new URL("/", request.url));
+    }
+  }
+
+  // If an authenticated + subscribed user hits the marketing landing, send
+  // them straight to the app. Anonymous users still see the marketing page.
+  if (pathname === "/" && user) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("subscription_status")
+      .eq("id", user.id)
+      .single();
+
+    const status = profile?.subscription_status;
+    if (status === "active" || status === "trialing") {
+      return NextResponse.redirect(new URL("/chat", request.url));
     }
   }
 

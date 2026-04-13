@@ -34,7 +34,7 @@ const COPY: Record<Variant, {
     emailCta: "Send sign-in link",
     emailPlaceholder: "Your email address",
     codeHeading: "Check your email",
-    codeSubheading: "We just sent a 6-digit code to",
+    codeSubheading: "We sent a 6-digit code to",
     codeCta: "Sign in",
   },
   "post-purchase": {
@@ -42,8 +42,8 @@ const COPY: Record<Variant, {
     subheading: "Save your progress and unlock daily check-ins with Sam.",
     emailCta: "Create my account",
     emailPlaceholder: "Your email",
-    codeHeading: "Almost there",
-    codeSubheading: "We just sent a 6-digit code to",
+    codeHeading: "Check your email",
+    codeSubheading: "We sent a 6-digit code to",
     codeCta: "Unlock Sam",
   },
 };
@@ -314,7 +314,13 @@ export default function AuthGate({
               {loading ? "Verifying..." : copy.codeCta}
             </button>
 
-            <div className="flex items-center justify-between pt-3">
+            <p className="text-xs text-text-muted text-center leading-relaxed pt-2">
+              Open your email and paste the 6-digit code above.
+              <br />
+              Don&apos;t see it? Check your spam folder or tap Resend.
+            </p>
+
+            <div className="flex items-center justify-between pt-1">
               <button
                 type="button"
                 onClick={handleUseDifferentEmail}

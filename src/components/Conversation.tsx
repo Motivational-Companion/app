@@ -6,7 +6,13 @@ import { useCallback, useState, useEffect } from "react";
 import LiveLists, { type NoteItem } from "@/components/LiveLists";
 import type { OnboardingData } from "@/lib/types";
 
-export default function Conversation({ onBack, onboardingData }: { onBack?: () => void; onboardingData?: OnboardingData | null }) {
+type Props = {
+  onBack?: () => void;
+  onboardingData?: OnboardingData | null;
+  onNoteAdded?: (listKey: "issues" | "goals" | "tasks", item: NoteItem) => void;
+};
+
+export default function Conversation({ onBack, onboardingData, onNoteAdded }: Props) {
   const [hasStarted, setHasStarted] = useState(false);
   const [micAllowed, setMicAllowed] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -84,6 +90,7 @@ export default function Conversation({ onBack, onboardingData }: { onBack?: () =
         };
         setIssues((prev) => [...prev, item]);
         setLastAdded(item.id);
+        onNoteAdded?.("issues", item);
         return "Noted.";
       },
       note_goal: async (params: { title: string }) => {
@@ -94,6 +101,7 @@ export default function Conversation({ onBack, onboardingData }: { onBack?: () =
         };
         setGoals((prev) => [...prev, item]);
         setLastAdded(item.id);
+        onNoteAdded?.("goals", item);
         return "Noted.";
       },
       note_task: async (params: { title: string; timeframe?: string }) => {
@@ -105,6 +113,7 @@ export default function Conversation({ onBack, onboardingData }: { onBack?: () =
         };
         setTasks((prev) => [...prev, item]);
         setLastAdded(item.id);
+        onNoteAdded?.("tasks", item);
         return "Noted.";
       },
     },
