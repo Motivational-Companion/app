@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import type { NoteItem } from "@/components/LiveLists";
-import LiveLists from "@/components/LiveLists";
+import FocusPanelList from "@/components/FocusPanelList";
 
 type ListKey = "issues" | "goals" | "tasks";
 
@@ -16,9 +16,22 @@ type Props = {
   issues: NoteItem[];
   goals: NoteItem[];
   tasks: NoteItem[];
-  onRemove?: (listKey: ListKey, id: string) => void;
-  onReorder?: (listKey: ListKey, id: string, direction: "up" | "down") => void;
+  completedIds: Set<string>;
+  onToggleDone: (listKey: ListKey, id: string) => void;
+  onDelete: (listKey: ListKey, id: string) => void;
+  /**
+   * Optional: if provided, clicking a suggestion in the empty state
+   * fills the chat input with the suggestion text. Used for first-time
+   * users who do not know what to type.
+   */
+  onSuggestionClick?: (text: string) => void;
 };
+
+const SUGGESTIONS = [
+  "I'm feeling stretched thin and need to get organized.",
+  "There's a big thing on my plate this week and I do not know where to start.",
+  "I keep putting off the same task and it's making me anxious.",
+];
 
 /**
  * Responsive layout for the authenticated chat experience.
@@ -36,14 +49,21 @@ type Props = {
  *
  * The children are rendered exactly once — no double mounting, no
  * double-instance chat state. Responsive behavior is CSS-only.
+ *
+ * Focus panel is interactive: click a task circle to mark it done
+ * (persists via onToggleDone callback), hover to reveal a delete button
+ * (persists via onDelete callback). Done items show with strikethrough
+ * and muted color but stay in the list so users can un-done them.
  */
 export default function SplitPaneChatLayout({
   children,
   issues,
   goals,
   tasks,
-  onRemove,
-  onReorder,
+  completedIds,
+  onToggleDone,
+  onDelete,
+  onSuggestionClick,
 }: Props) {
   const totalItems = issues.length + goals.length + tasks.length;
 
@@ -56,31 +76,53 @@ export default function SplitPaneChatLayout({
         </div>
 
         {/* Focus panel — desktop only */}
-        <aside className="hidden md:flex md:flex-1 md:min-w-0 md:h-[calc(100dvh-3rem)] md:max-h-[900px] bg-card rounded-3xl shadow-xl border border-border overflow-y-auto">
+        <aside className="hidden md:flex md:flex-col md:flex-1 md:min-w-0 md:h-[calc(100dvh-3rem)] md:max-h-[900px] bg-card rounded-3xl shadow-xl border border-border overflow-y-auto">
           <div className="p-6 w-full">
-            <div className="mb-5">
+            <div className="mb-5 flex items-baseline justify-between">
               <h2 className="font-display text-xl font-semibold text-text">
                 Your focus
               </h2>
-              <p className="text-xs text-text-muted mt-0.5">
-                Items Sam captures from your conversation
-              </p>
+              {totalItems > 0 && (
+                <span className="text-xs text-text-muted">
+                  {totalItems} {totalItems === 1 ? "item" : "items"}
+                </span>
+              )}
             </div>
 
             {totalItems === 0 ? (
-              <div className="text-center py-12">
-                <p className="text-sm text-text-soft max-w-xs mx-auto leading-relaxed">
-                  Your focus areas will appear here as you talk to Sam.
+              <div className="py-8">
+                <p className="text-sm text-text-soft max-w-xs mb-5 leading-relaxed">
+                  This is where your issues, goals, and to-dos will show up
+                  as you brain dump with Sam.
                 </p>
+                {onSuggestionClick && (
+                  <>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-text-muted mb-2">
+                      Not sure what to say? Try one of these
+                    </p>
+                    <div className="space-y-2">
+                      {SUGGESTIONS.map((text) => (
+                        <button
+                          key={text}
+                          type="button"
+                          onClick={() => onSuggestionClick(text)}
+                          className="w-full text-left text-sm text-text bg-bg hover:bg-accent-soft/40 border border-border rounded-xl px-4 py-3 transition-colors"
+                        >
+                          &ldquo;{text}&rdquo;
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
               </div>
             ) : (
-              <LiveLists
+              <FocusPanelList
                 issues={issues}
                 goals={goals}
                 tasks={tasks}
-                onRemove={onRemove ?? (() => {})}
-                onReorder={onReorder ?? (() => {})}
-                lastAdded={null}
+                completedIds={completedIds}
+                onToggleDone={onToggleDone}
+                onDelete={onDelete}
               />
             )}
           </div>

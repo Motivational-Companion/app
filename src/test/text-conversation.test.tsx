@@ -31,7 +31,7 @@ describe("TextConversation", () => {
   it("shows the message input", () => {
     render(<TextConversation />);
     expect(
-      screen.getByPlaceholderText("Type a message...")
+      screen.getByPlaceholderText(/brain dump here/i)
     ).toBeInTheDocument();
   });
 
