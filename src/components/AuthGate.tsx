@@ -177,6 +177,20 @@ export default function AuthGate({
     [supabase, email, onAuthenticated]
   );
 
+  // Auto-verify whenever the code reaches 6 digits and we're idle. Using
+  // a ref to remember the last code we attempted prevents re-submitting
+  // the same value on retries (verifyCode clears the code on failure, so
+  // a fresh paste of a different code will fire as expected). Lives here
+  // — after verifyCode is declared — so the dep array is valid.
+  const lastSubmittedRef = useRef<string>("");
+  useEffect(() => {
+    if (step !== "code") return;
+    if (code.length !== 6 || loading) return;
+    if (lastSubmittedRef.current === code) return;
+    lastSubmittedRef.current = code;
+    void verifyCode(code);
+  }, [code, loading, step, verifyCode]);
+
   const handleVerifyCode = async (e: React.FormEvent) => {
     e.preventDefault();
     await verifyCode(code);
@@ -323,11 +337,9 @@ export default function AuthGate({
               onChange={(e) => {
                 const digits = e.target.value.replace(/\D/g, "").slice(0, 6);
                 setCode(digits);
-                // Auto-submit as soon as the 6th digit lands so users do
-                // not need to also press the button
-                if (digits.length === 6 && !loading) {
-                  void verifyCode(digits);
-                }
+                // Auto-submit handled by the lastSubmittedRef effect above
+                // so that paste, autocomplete, and typing all behave the
+                // same way without races against React's state batching.
               }}
               placeholder="000000"
               required
