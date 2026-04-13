@@ -82,7 +82,17 @@ export default function MarketingLanding({ onStartQuiz }: Props) {
           AI-powered coaching. 7 days free.
         </p>
 
-        <div className="flex justify-center gap-4 mt-6">
+        <p className="text-sm text-text-soft text-center mt-5">
+          Already have an account?{" "}
+          <a
+            href="/signin"
+            className="text-primary font-semibold hover:text-primary-dark transition-colors"
+          >
+            Sign in
+          </a>
+        </p>
+
+        <div className="flex justify-center gap-4 mt-5">
           <a href="/privacy" className="text-xs text-text-muted hover:text-text-soft transition-colors">
             Privacy
           </a>

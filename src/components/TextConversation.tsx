@@ -37,9 +37,18 @@ type Props = {
    * initial mount; subsequent typing is preserved.
    */
   initialInput?: string;
+  /**
+   * If provided, renders a microphone button in the header that opens
+   * the voice conversation overlay.
+   */
+  onOpenVoice?: () => void;
+  /**
+   * If provided, renders a small Sign out link in the header.
+   */
+  onSignOut?: () => void;
 };
 
-export default function TextConversation({ onBack, onboardingData, chatMode = "chat", onNoteAdded, existingTasks, embedded = false, initialInput }: Props) {
+export default function TextConversation({ onBack, onboardingData, chatMode = "chat", onNoteAdded, existingTasks, embedded = false, initialInput, onOpenVoice, onSignOut }: Props) {
   const firstMessage = chatMode === "checkin"
     ? SAM_CHECKIN_FIRST_MESSAGE
     : onboardingData
@@ -348,6 +357,7 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
               <button
                 onClick={onBack}
                 className="text-text-soft text-xl px-1 py-1 mr-1"
+                aria-label="Back"
               >
                 &#8592;
               </button>
@@ -361,6 +371,41 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
                 {isStreaming ? "Typing..." : "Online"}
               </p>
             </div>
+          </div>
+          <div className="flex items-center gap-1">
+            {onOpenVoice && (
+              <button
+                onClick={onOpenVoice}
+                className="h-9 w-9 rounded-full flex items-center justify-center text-text-soft hover:bg-bg hover:text-primary transition-colors"
+                aria-label="Start voice conversation"
+                title="Start voice conversation"
+              >
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                  <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                  <line x1="12" y1="19" x2="12" y2="23" />
+                  <line x1="8" y1="23" x2="16" y2="23" />
+                </svg>
+              </button>
+            )}
+            {onSignOut && (
+              <button
+                onClick={onSignOut}
+                className="text-xs text-text-muted hover:text-text-soft transition-colors px-2 py-1"
+              >
+                Sign out
+              </button>
+            )}
           </div>
         </header>
 
