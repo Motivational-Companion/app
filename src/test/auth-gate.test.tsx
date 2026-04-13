@@ -85,8 +85,12 @@ describe("AuthGate", () => {
         />
       );
 
-      // Should be on the code step, not the email step
-      expect(screen.getByText(/almost there/i)).toBeInTheDocument();
+      // Should be on the code step, not the email step. The code step
+      // heading is "Check your email" regardless of variant (standard
+      // OTP UX pattern — imperative verb tells the user what to do).
+      expect(
+        screen.getByRole("heading", { name: /check your email/i })
+      ).toBeInTheDocument();
       expect(
         screen.queryByPlaceholderText(/your email$/i)
       ).not.toBeInTheDocument();
