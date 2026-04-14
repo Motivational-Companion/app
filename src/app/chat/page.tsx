@@ -53,16 +53,21 @@ export default function ChatPage() {
     });
   }, [user, supabase]);
 
-  // Existing tasks string (with ids) that Sam references in the prompt
-  // so she can update in place rather than duplicate.
+  // Existing tasks string (with ids + descriptions) that Sam reads as
+  // context. Including the description means refinements made inside
+  // a task pane flow back into the home chat — Sam can pull from each
+  // task's durable context without the user having to repeat it.
   const existingTasksString = useMemo(() => {
     const lines: string[] = [];
-    for (const item of issues) lines.push(`Issue [${item.id}] ${item.text}`);
-    for (const item of goals) lines.push(`Goal [${item.id}] ${item.text}`);
+    const fmt = (label: string, item: typeof tasks[number], extra?: string) => {
+      const head = `${label} [${item.id}] ${item.text}${extra ?? ""}`;
+      const desc = item.description?.trim();
+      return desc ? `${head}\n  Context: ${desc}` : head;
+    };
+    for (const item of issues) lines.push(fmt("Issue", item));
+    for (const item of goals) lines.push(fmt("Goal", item));
     for (const item of tasks) {
-      lines.push(
-        `Task [${item.id}] ${item.text}${item.timeframe ? ` (${item.timeframe})` : ""}`
-      );
+      lines.push(fmt("Task", item, item.timeframe ? ` (${item.timeframe})` : ""));
     }
     return lines.length > 0 ? lines.join("\n") : undefined;
   }, [issues, goals, tasks]);

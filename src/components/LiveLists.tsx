@@ -7,6 +7,13 @@ export type NoteItem = {
   text: string;
   addedAt: number;
   timeframe?: string;
+  /**
+   * Long-form context for the task. Set + refined inside the task
+   * detail pane (manually or via Sam's update_task_description tool).
+   * Surfaced into the home/global chat's prompt so Sam can pull from
+   * it when the user references a task there.
+   */
+  description?: string | null;
 };
 
 type ListConfig = {

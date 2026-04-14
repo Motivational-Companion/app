@@ -47,6 +47,12 @@ type TaskStateValue = {
   handleNoteUpdated: (listKey: ListKey, item: NoteItem) => void;
   handleToggleDone: (listKey: ListKey, id: string) => Promise<void>;
   handleDeleteTask: (listKey: ListKey, id: string) => Promise<void>;
+  /**
+   * Reflect a task description change into the shared buckets so the
+   * home/global chat sees the latest context next time it builds the
+   * existingTasksString.
+   */
+  setTaskDescription: (taskId: string, description: string) => void;
 };
 
 const TaskStateContext = createContext<TaskStateValue | null>(null);
@@ -135,6 +141,26 @@ export function TaskStateProvider({ children }: { children: ReactNode }) {
     [completedIds, user, supabase]
   );
 
+  const setTaskDescription = useCallback(
+    (taskId: string, description: string) => {
+      setBuckets((prev) => {
+        const next: TaskBuckets = {
+          issues: prev.issues.map((i) =>
+            i.id === taskId ? { ...i, description } : i
+          ),
+          goals: prev.goals.map((g) =>
+            g.id === taskId ? { ...g, description } : g
+          ),
+          tasks: prev.tasks.map((t) =>
+            t.id === taskId ? { ...t, description } : t
+          ),
+        };
+        return next;
+      });
+    },
+    []
+  );
+
   const handleDeleteTask = useCallback(
     async (listKey: ListKey, id: string) => {
       const previousItems = buckets[listKey];
@@ -181,6 +207,7 @@ export function TaskStateProvider({ children }: { children: ReactNode }) {
       handleNoteUpdated,
       handleToggleDone,
       handleDeleteTask,
+      setTaskDescription,
     }),
     [
       buckets,
@@ -190,6 +217,7 @@ export function TaskStateProvider({ children }: { children: ReactNode }) {
       handleNoteUpdated,
       handleToggleDone,
       handleDeleteTask,
+      setTaskDescription,
     ]
   );
 

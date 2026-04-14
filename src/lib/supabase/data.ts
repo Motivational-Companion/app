@@ -204,10 +204,14 @@ export async function loadActiveTasks(supabase: SupabaseClient, userId: string) 
   const tasks: NoteItem[] = [];
 
   for (const row of data || []) {
+    // Skip subtasks here — they're loaded with their parent in the
+    // task detail pane, not as standalone drawer entries.
+    if (row.parent_task_id) continue;
     const item: NoteItem = {
       id: row.id,
       text: row.title,
       timeframe: row.timeframe || undefined,
+      description: row.description ?? null,
       addedAt: new Date(row.created_at).getTime(),
     };
     if (row.list_type === "issue") issues.push(item);

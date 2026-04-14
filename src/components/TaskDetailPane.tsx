@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import TextConversation from "@/components/TextConversation";
 import { useAuth } from "@/lib/supabase/useAuth";
+import { useTaskState } from "@/lib/task-state";
 import {
   addSubtask,
   deleteTask,
@@ -28,6 +29,7 @@ function formatDateForInput(dateStr: string | null | undefined): string {
 
 export default function TaskDetailPane({ taskId }: Props) {
   const { user, supabase } = useAuth();
+  const { setTaskDescription } = useTaskState();
   const [task, setTask] = useState<TaskRow | null>(null);
   const [parent, setParent] = useState<TaskRow | null>(null);
   const [subtasks, setSubtasks] = useState<TaskRow[]>([]);
@@ -83,13 +85,14 @@ export default function TaskDetailPane({ taskId }: Props) {
     if (descDraft === (task.description ?? "")) return;
     const nextDesc = descDraft;
     setTask((prev) => (prev ? { ...prev, description: nextDesc } : prev));
+    setTaskDescription(task.id, nextDesc);
     try {
       await updateTaskDescription(supabase, task.id, nextDesc);
     } catch {
       setTask((prev) => (prev ? { ...prev, description: task.description } : prev));
       setDescDraft(task.description ?? "");
     }
-  }, [supabase, task, descDraft]);
+  }, [supabase, task, descDraft, setTaskDescription]);
 
   const commitDueDate = useCallback(
     async (value: string) => {
@@ -182,11 +185,12 @@ export default function TaskDetailPane({ taskId }: Props) {
   }, [task, parent, subtasks]);
 
   const handleDescriptionUpdatedBySam = useCallback(
-    (_taskId: string, description: string) => {
+    (refinedTaskId: string, description: string) => {
       setDescDraft(description);
       setTask((prev) => (prev ? { ...prev, description } : prev));
+      setTaskDescription(refinedTaskId, description);
     },
-    []
+    [setTaskDescription]
   );
 
   if (loading) {
