@@ -286,8 +286,13 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
       },
     },
     onConnect: () => setVoiceError(null),
-    onDisconnect: () => {
+    onDisconnect: (details) => {
       setVoiceActive(false);
+      // Surface unexpected disconnect reasons so failures don't silently
+      // collapse the voice UI back to the text input.
+      if (details && details.reason === "error") {
+        setVoiceError(details.message || "Voice disconnected unexpectedly.");
+      }
     },
     onError: (message: string) => setVoiceError(message),
     onMessage: (payload) => {
@@ -369,35 +374,16 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
         if (onboardingData.coachingStyle) dynamicVariables.coaching_style = String(onboardingData.coachingStyle);
       }
 
-      // Summarize the last handful of text turns as prior_context. The
-      // agent prompt references {{prior_context}}. Exclude the cold
-      // synthesized greeting (it carries no real signal) so Sam only
-      // sees the prior thread when the user has actually chatted.
-      const realTurns = messages.filter(
-        (m, idx) => !(idx === 0 && m.role === "assistant")
-      );
-      const recent = realTurns.slice(-10);
-      const hasPriorContext = recent.length > 0;
-      if (hasPriorContext) {
-        dynamicVariables.prior_context = recent
-          .map((m) => `${m.role === "user" ? "User" : "Sam"}: ${m.content}`)
-          .join("\n");
-      }
+      // prior_context wiring shelved — voice session was disconnecting
+      // immediately once the agent prompt referenced {{prior_context}}.
+      // Agent prompt reverted via API; client no longer passes the
+      // variable. Revisit after MVP validation.
 
       await voice.startSession({
         agentId,
         connectionType: "websocket",
         ...(selectedMic ? { inputDeviceId: selectedMic } : {}),
         ...(Object.keys(dynamicVariables).length > 0 ? { dynamicVariables } : {}),
-        // When we have prior context, override the agent's hardcoded
-        // "Hey, I'm Sam..." first_message so she doesn't re-introduce
-        // herself and trigger a "fresh conversation" self-description.
-        // An empty string tells her to derive an opener from the prompt
-        // (which now instructs: "start with 'Hey, welcome back' and
-        // reference something specific").
-        ...(hasPriorContext
-          ? { overrides: { agent: { firstMessage: "" } } }
-          : {}),
       });
       setVoiceActive(true);
     } catch (err) {
