@@ -74,6 +74,9 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
   const [micMenuOpen, setMicMenuOpen] = useState(false);
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const voiceConvoIdRef = useRef<string | null>(null);
+  // 0–1 amplitude from the ElevenLabs VAD pipeline. Drives the waveform
+  // while the user is talking; reset to 0 when the agent takes over.
+  const [vadScore, setVadScore] = useState(0);
 
   // Live lists
   const [issues, setIssues] = useState<NoteItem[]>([]);
@@ -295,6 +298,10 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
         saveMessage(supabase, voiceConvoIdRef.current, role, payload.message);
       }
     },
+    onVadScore: ({ vadScore: score }) => {
+      // Clamp to 0–1; ElevenLabs returns a scalar per audio frame.
+      setVadScore(Math.max(0, Math.min(1, score)));
+    },
   });
 
   const startVoice = useCallback(async () => {
@@ -336,6 +343,21 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
         if (onboardingData.vision) dynamicVariables.vision = String(onboardingData.vision);
         if (onboardingData.priorityArea) dynamicVariables.priority_area = String(onboardingData.priorityArea);
         if (onboardingData.coachingStyle) dynamicVariables.coaching_style = String(onboardingData.coachingStyle);
+      }
+
+      // Summarize the last handful of text turns as prior_context so the
+      // voice agent can reference the thread. Requires the ElevenLabs
+      // agent template to consume this variable (e.g.
+      // "Prior conversation:\n{{prior_context}}" in the system prompt).
+      const recent = messages.slice(-10);
+      if (recent.length > 0) {
+        const transcript = recent
+          .map((m) => {
+            const speaker = m.role === "user" ? "User" : "Sam";
+            return `${speaker}: ${m.content}`;
+          })
+          .join("\n");
+        dynamicVariables.prior_context = transcript;
       }
 
       await voice.startSession({
@@ -689,21 +711,41 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
                 )}
               </div>
 
-              {/* Waveform visualizer */}
+              {/* Waveform visualizer. Bars respond to the user's live
+                  mic amplitude (vadScore) while the user is speaking.
+                  While Sam is speaking, bars pulse with a slow low-amp
+                  rhythm as a "speaking" cue. When idle/connecting, bars
+                  rest at a minimum height. */}
               <div
                 className="flex-1 flex items-center justify-center gap-1 h-[56px] rounded-2xl bg-bg border border-border"
-                aria-label={voice.isSpeaking ? "Sam is speaking" : "Listening"}
+                aria-label={voice.isSpeaking ? "Sam is speaking" : vadScore > 0.1 ? "You are speaking" : "Listening"}
               >
-                {[0, 1, 2, 3, 4, 5, 6].map((i) => (
-                  <span
-                    key={i}
-                    className={`inline-block w-1 rounded-full ${voice.isSpeaking ? "bg-primary" : "bg-primary/50"}`}
-                    style={{
-                      height: `${12 + (i % 3) * 8}px`,
-                      animation: voice.status === "connected" ? `wave 1.2s ease-in-out ${i * 0.08}s infinite` : "none",
-                    }}
-                  />
-                ))}
+                {[0, 1, 2, 3, 4, 5, 6].map((i) => {
+                  // Each bar gets a stable phase offset so the group
+                  // doesn't pulse in lockstep; the center bars respond
+                  // most to input (like a real waveform).
+                  const centerBias = 1 - Math.abs(i - 3) / 3; // 0..1..0
+                  let heightPx = 6;
+                  if (voice.isSpeaking) {
+                    // Gentle breathing animation so the user can tell
+                    // Sam is talking back.
+                    heightPx = 10 + centerBias * 14;
+                  } else if (voice.status === "connected") {
+                    // Scale bar height by live VAD score. Center bars
+                    // amplify more; edges stay smaller.
+                    const amplified = Math.min(1, vadScore * 1.8);
+                    heightPx = 6 + amplified * centerBias * 34 + amplified * 6;
+                  }
+                  return (
+                    <span
+                      key={i}
+                      className={`inline-block w-1 rounded-full transition-[height] duration-75 ease-out ${
+                        voice.isSpeaking ? "bg-primary" : "bg-primary/80"
+                      }`}
+                      style={{ height: `${heightPx}px` }}
+                    />
+                  );
+                })}
               </div>
 
               {/* Stop button */}
