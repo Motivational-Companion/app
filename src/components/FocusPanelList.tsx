@@ -14,17 +14,17 @@ type ListConfig = {
 const LIST_CONFIGS: Record<ListKey, ListConfig> = {
   issues: {
     title: "Issues",
-    color: "text-red-600",
-    dotColor: "bg-red-500",
+    color: "text-text-soft",
+    dotColor: "bg-accent-soft",
   },
   goals: {
     title: "Goals",
-    color: "text-amber-600",
-    dotColor: "bg-amber-500",
+    color: "text-text-soft",
+    dotColor: "bg-accent",
   },
   tasks: {
     title: "To-dos",
-    color: "text-primary",
+    color: "text-text-soft",
     dotColor: "bg-primary",
     showTimeframe: true,
   },
@@ -80,7 +80,7 @@ export default function FocusPanelList({
             return (
               <li
                 key={item.id}
-                className={`group flex items-start gap-2.5 px-2 py-2 rounded-lg hover:bg-bg/60 transition-colors ${
+                className={`group flex items-start gap-2.5 px-2 py-2 rounded-lg hover:bg-card/60 transition-colors ${
                   isDone ? "opacity-60" : ""
                 }`}
               >

@@ -168,6 +168,14 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
     []
   );
 
+  // Always-current messages length so handleNote can anchor cards to
+  // the correct message index even when called from the streaming SSE
+  // loop (which captures a stale closure).
+  const messagesLengthRef = useRef(0);
+  useEffect(() => {
+    messagesLengthRef.current = messages.length;
+  }, [messages.length]);
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
@@ -226,18 +234,21 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
         };
         setLastAdded(item.id);
         trackEvent("task_extracted", { category: tool, title: data.title });
+        // Anchor the inline card AFTER the current assistant message
+        // (the last message in the stream). Using the ref ensures we
+        // pick up the true current length, not a stale closure value.
         setNoteCards((cards) => [...cards, {
           id: item.id,
           category,
           text: data.title,
           timeframe: data.timeframe,
-          afterMessageIndex: messages.length - 1,
+          afterMessageIndex: Math.max(0, messagesLengthRef.current - 1),
         }]);
         if (onNoteAdded) onNoteAdded(listKey, item);
         return [...prev, item];
       });
     },
-    [onNoteAdded, onNoteUpdated, messages.length]
+    [onNoteAdded, onNoteUpdated]
   );
 
   const sendMessage = useCallback(async () => {
@@ -357,39 +368,44 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
   const totalNotes = issues.length + goals.length + tasks.length;
   const [listExpanded, setListExpanded] = useState(false);
 
-  // When embedded is set, the parent (e.g. SplitPaneChatLayout) provides
-  // its own card chrome, so drop the standalone shell styles.
+  // When embedded (inside SplitPaneChatLayout), drop the card chrome
+  // and sit flush in the parent's warm background so the whole
+  // workspace feels like one room, not two stacked cards.
   const outerClass = embedded
     ? "h-full flex flex-col"
     : "min-h-[100dvh] bg-bg flex justify-center items-start md:items-center md:py-12 md:px-4";
   const innerClass = embedded
-    ? "w-full h-full bg-card flex flex-col overflow-hidden"
+    ? "w-full h-full flex flex-col overflow-hidden"
     : "w-full max-w-[480px] h-[100dvh] md:h-[85vh] bg-card md:rounded-3xl md:shadow-xl md:border md:border-border flex flex-col overflow-hidden";
 
   return (
     <div className={outerClass}>
       <div className={innerClass}>
-        {/* Header */}
-        <header className="flex items-center justify-between px-5 py-3 border-b border-border shrink-0">
-          <div className="flex items-center gap-3">
-            {onBack && (
-              <button
-                onClick={onBack}
-                className="text-text-soft text-xl px-1 py-1 mr-1"
-                aria-label="Back"
-              >
-                &#8592;
-              </button>
-            )}
-            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-accent to-primary flex items-center justify-center">
+        {/* Header — warmer and more present. In embedded mode the app's
+            top nav lives above, so this is a subtle "Sam is here" strip. */}
+        <header className="flex items-center gap-3 px-6 py-4 shrink-0">
+          {onBack && (
+            <button
+              onClick={onBack}
+              className="text-text-soft text-xl px-1 py-1 mr-1"
+              aria-label="Back"
+            >
+              &#8592;
+            </button>
+          )}
+          <div className="relative shrink-0">
+            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-accent to-primary flex items-center justify-center shadow-sm">
               <span className="text-white font-semibold">S</span>
             </div>
-            <div>
-              <h2 className="font-semibold text-text text-sm">Sam</h2>
-              <p className="text-xs text-text-muted">
-                {isStreaming ? "Typing..." : "Online"}
-              </p>
-            </div>
+            {!isStreaming && (
+              <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-success ring-2 ring-bg" />
+            )}
+          </div>
+          <div>
+            <h2 className="font-semibold text-text text-sm">Sam</h2>
+            <p className="text-xs text-text-muted">
+              {isStreaming ? "Listening…" : "Here with you"}
+            </p>
           </div>
         </header>
 
@@ -428,10 +444,10 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
                       </div>
                     )}
                     <div
-                      className={`max-w-[80%] px-4 py-3 rounded-2xl text-sm leading-relaxed ${
+                      className={`max-w-[80%] px-4 py-3 rounded-2xl text-[15px] leading-relaxed ${
                         msg.role === "user"
-                          ? "bg-primary text-white rounded-br-sm"
-                          : "bg-card border border-border text-text rounded-bl-sm"
+                          ? "bg-primary text-white rounded-br-sm shadow-sm"
+                          : "bg-card text-text rounded-bl-sm shadow-[0_1px_2px_rgba(124,92,62,0.06)]"
                       }`}
                     >
                       {msg.content || (
@@ -452,13 +468,13 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
                   {cardsAfter.map((card) => (
                     <div
                       key={card.id}
-                      className="ml-9 mt-2 flex items-center gap-2.5 bg-bg border border-border rounded-xl px-3 py-2 animate-[fadeSlideIn_0.3s_ease-out]"
+                      className="ml-9 mt-2 flex items-center gap-2.5 bg-accent-soft/40 rounded-xl px-3 py-2 animate-[fadeSlideIn_0.3s_ease-out]"
                     >
-                      <span className="text-sm">
+                      <span className="text-sm" aria-hidden="true">
                         {card.category === "issue" ? "\uD83D\uDFE1" : card.category === "goal" ? "\uD83C\uDFAF" : "\u2705"}
                       </span>
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-primary-dark/80">
                           {card.category === "issue" ? "Issue noted" : card.category === "goal" ? "Goal added" : "To-do added"}
                         </p>
                         <p className="text-sm text-text truncate">{card.text}</p>
@@ -518,9 +534,10 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
           </div>
         )}
 
-        {/* Input */}
-        <div className="px-5 pb-5 pt-4 border-t border-border shrink-0">
-          <div className="flex items-end gap-2">
+        {/* Input — floats above the bottom, no hard border, just a
+            soft shadow so the chat pane feels continuous. */}
+        <div className="px-5 pb-5 pt-2 shrink-0">
+          <div className="flex items-end gap-2 bg-card rounded-2xl shadow-[0_2px_12px_rgba(124,92,62,0.08)] p-1.5">
             <textarea
               ref={inputRef}
               value={input}
@@ -529,9 +546,9 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
               placeholder="Brain dump here. What's on your mind?"
               disabled={isStreaming}
               rows={2}
-              className="flex-1 resize-none rounded-2xl border border-border bg-bg px-4 py-3 text-[15px] text-text leading-snug
-                         placeholder:text-text-muted focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/15 transition-all
-                         disabled:opacity-50 min-h-[56px] max-h-32"
+              className="flex-1 resize-none rounded-xl bg-card px-3.5 py-2.5 text-[15px] text-text leading-snug
+                         placeholder:text-text-muted focus:outline-none transition-all
+                         disabled:opacity-50 min-h-[52px] max-h-32"
               style={{ fieldSizing: "content" } as React.CSSProperties}
             />
             {input.trim() || !onOpenVoice ? (
