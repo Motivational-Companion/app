@@ -171,6 +171,212 @@ export async function mockStripeSession(
 }
 
 /**
+ * Mock the task workspace surface: tasks list, task detail load, task
+ * mutations (description/title/due_date/subtasks/status), and the
+ * conversation lookup/create + messages load that the chat surfaces use.
+ *
+ * Provides a mutable in-memory store so tests can verify both reads
+ * and writes against the same shape without hitting Supabase.
+ */
+export type TaskFixture = {
+  id: string;
+  user_id: string;
+  list_type: "issue" | "goal" | "task";
+  title: string;
+  status?: "active" | "completed";
+  description?: string | null;
+  due_date?: string | null;
+  parent_task_id?: string | null;
+  timeframe?: string | null;
+};
+
+export type TaskWorkspaceState = {
+  tasks: TaskFixture[];
+  conversations: Array<{
+    id: string;
+    user_id: string;
+    task_id: string | null;
+    mode: "text" | "voice";
+    ended_at: string | null;
+    started_at: string;
+  }>;
+  messages: Array<{
+    id: string;
+    conversation_id: string;
+    role: "user" | "assistant";
+    content: string;
+    created_at: string;
+  }>;
+};
+
+export async function mockTaskWorkspace(page: Page, state: TaskWorkspaceState) {
+  const taskIdSeq = { n: 1000 };
+  const convIdSeq = { n: 2000 };
+
+  await page.route(/\/rest\/v1\/tasks(\?.*)?$/, async (route: Route) => {
+    const url = new URL(route.request().url());
+    const method = route.request().method();
+
+    if (method === "GET") {
+      const userIdEq = url.searchParams.get("user_id");
+      const statusEq = url.searchParams.get("status");
+      const parentIs = url.searchParams.get("parent_task_id");
+      const idEq = url.searchParams.get("id");
+      let rows = state.tasks.slice();
+      if (userIdEq) rows = rows.filter((r) => `eq.${r.user_id}` === userIdEq);
+      if (statusEq) {
+        rows = rows.filter(
+          (r) => `eq.${r.status ?? "active"}` === statusEq
+        );
+      }
+      if (parentIs) {
+        const parentId = parentIs.replace(/^eq\./, "");
+        rows = rows.filter((r) => r.parent_task_id === parentId);
+      }
+      if (idEq) {
+        const id = idEq.replace(/^eq\./, "");
+        rows = rows.filter((r) => r.id === id);
+      }
+      return route.fulfill({
+        status: 200,
+        body: JSON.stringify(
+          rows.map((r) => ({
+            id: r.id,
+            user_id: r.user_id,
+            list_type: r.list_type,
+            title: r.title,
+            timeframe: r.timeframe ?? null,
+            status: r.status ?? "active",
+            description: r.description ?? null,
+            due_date: r.due_date ?? null,
+            parent_task_id: r.parent_task_id ?? null,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            rank: 0,
+          }))
+        ),
+      });
+    }
+
+    if (method === "POST") {
+      const body = JSON.parse(route.request().postData() ?? "{}");
+      const incoming = Array.isArray(body) ? body : [body];
+      const created = incoming.map((row) => {
+        const id = `task-mock-${++taskIdSeq.n}`;
+        const newTask: TaskFixture = {
+          id,
+          user_id: row.user_id,
+          list_type: row.list_type,
+          title: row.title,
+          status: row.status ?? "active",
+          description: row.description ?? null,
+          due_date: row.due_date ?? null,
+          parent_task_id: row.parent_task_id ?? null,
+          timeframe: row.timeframe ?? null,
+        };
+        state.tasks.push(newTask);
+        return newTask;
+      });
+      return route.fulfill({
+        status: 201,
+        body: JSON.stringify(created),
+      });
+    }
+
+    if (method === "PATCH") {
+      const idEq = url.searchParams.get("id");
+      const id = idEq?.replace(/^eq\./, "") ?? "";
+      const body = JSON.parse(route.request().postData() ?? "{}");
+      const idx = state.tasks.findIndex((t) => t.id === id);
+      if (idx !== -1) state.tasks[idx] = { ...state.tasks[idx], ...body };
+      return route.fulfill({ status: 204, body: "" });
+    }
+
+    if (method === "DELETE") {
+      const idEq = url.searchParams.get("id");
+      const id = idEq?.replace(/^eq\./, "") ?? "";
+      state.tasks = state.tasks.filter((t) => t.id !== id);
+      return route.fulfill({ status: 204, body: "" });
+    }
+
+    return route.fulfill({ status: 200, body: "[]" });
+  });
+
+  await page.route(/\/rest\/v1\/conversations(\?.*)?$/, async (route: Route) => {
+    const url = new URL(route.request().url());
+    const method = route.request().method();
+
+    if (method === "GET") {
+      const userIdEq = url.searchParams.get("user_id");
+      const taskIdParam = url.searchParams.get("task_id");
+      let rows = state.conversations.slice();
+      if (userIdEq) rows = rows.filter((c) => `eq.${c.user_id}` === userIdEq);
+      if (taskIdParam === "is.null") {
+        rows = rows.filter((c) => c.task_id === null);
+      } else if (taskIdParam) {
+        const taskId = taskIdParam.replace(/^eq\./, "");
+        rows = rows.filter((c) => c.task_id === taskId);
+      }
+      return route.fulfill({
+        status: 200,
+        body: JSON.stringify(rows.map((c) => ({ id: c.id }))),
+      });
+    }
+
+    if (method === "POST") {
+      const body = JSON.parse(route.request().postData() ?? "{}");
+      const incoming = Array.isArray(body) ? body : [body];
+      const created = incoming.map((row) => ({
+        id: `conv-mock-${++convIdSeq.n}`,
+        user_id: row.user_id,
+        task_id: row.task_id ?? null,
+        mode: row.mode ?? "text",
+        ended_at: null,
+        started_at: new Date().toISOString(),
+      }));
+      state.conversations.push(...created);
+      return route.fulfill({
+        status: 201,
+        body: JSON.stringify(created),
+      });
+    }
+
+    return route.fulfill({ status: 200, body: "[]" });
+  });
+
+  await page.route(/\/rest\/v1\/messages(\?.*)?$/, async (route: Route) => {
+    const url = new URL(route.request().url());
+    const method = route.request().method();
+
+    if (method === "GET") {
+      const convEq = url.searchParams.get("conversation_id");
+      const cid = convEq?.replace(/^eq\./, "") ?? "";
+      const rows = state.messages.filter((m) => m.conversation_id === cid);
+      return route.fulfill({
+        status: 200,
+        body: JSON.stringify(
+          rows.map((r) => ({ role: r.role, content: r.content }))
+        ),
+      });
+    }
+
+    if (method === "POST") {
+      const body = JSON.parse(route.request().postData() ?? "{}");
+      state.messages.push({
+        id: `msg-mock-${state.messages.length + 1}`,
+        conversation_id: body.conversation_id,
+        role: body.role,
+        content: body.content,
+        created_at: new Date().toISOString(),
+      });
+      return route.fulfill({ status: 201, body: "[]" });
+    }
+
+    return route.fulfill({ status: 200, body: "[]" });
+  });
+}
+
+/**
  * Mock the Claude chat streaming endpoint with a simple scripted response.
  */
 export async function mockClaudeChat(page: Page, responseText = "Hi, I'm Sam.") {
