@@ -74,9 +74,11 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
   const [micMenuOpen, setMicMenuOpen] = useState(false);
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const voiceConvoIdRef = useRef<string | null>(null);
-  // 0–1 amplitude from the ElevenLabs VAD pipeline. Drives the waveform
-  // while the user is talking; reset to 0 when the agent takes over.
-  const [vadScore, setVadScore] = useState(0);
+  // 0–1 amplitude derived from Sam's outgoing PCM audio. Drives the
+  // waveform only while she's speaking (per user request — the mic
+  // amplitude is not visualized).
+  const [agentVolume, setAgentVolume] = useState(0);
+  const agentDecayRef = useRef<number | null>(null);
 
   // Live lists
   const [issues, setIssues] = useState<NoteItem[]>([]);
@@ -298,9 +300,31 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
         saveMessage(supabase, voiceConvoIdRef.current, role, payload.message);
       }
     },
-    onVadScore: ({ vadScore: score }) => {
-      // Clamp to 0–1; ElevenLabs returns a scalar per audio frame.
-      setVadScore(Math.max(0, Math.min(1, score)));
+    onAudio: (base64Audio: string) => {
+      // Compute a rough amplitude (RMS) from Sam's PCM16 audio chunks
+      // so the waveform responds to her actual voice. Falls back to 0
+      // on decode failure — bars just stay idle instead of crashing.
+      try {
+        const bin = atob(base64Audio);
+        const samples = bin.length >> 1;
+        if (samples === 0) return;
+        let sumSquares = 0;
+        for (let i = 0; i < samples; i++) {
+          const lo = bin.charCodeAt(i * 2);
+          const hi = bin.charCodeAt(i * 2 + 1);
+          let s = (hi << 8) | lo;
+          if (s & 0x8000) s -= 0x10000;
+          sumSquares += s * s;
+        }
+        const rms = Math.sqrt(sumSquares / samples) / 32768;
+        setAgentVolume(Math.min(1, rms * 3));
+        // Decay: if no new audio arrives in 120ms, reset to 0 so bars
+        // return to their idle state between her pauses.
+        if (agentDecayRef.current) window.clearTimeout(agentDecayRef.current);
+        agentDecayRef.current = window.setTimeout(() => setAgentVolume(0), 120);
+      } catch {
+        // ignore decode errors
+      }
     },
   });
 
@@ -711,37 +735,23 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
                 )}
               </div>
 
-              {/* Waveform visualizer. Bars respond to the user's live
-                  mic amplitude (vadScore) while the user is speaking.
-                  While Sam is speaking, bars pulse with a slow low-amp
-                  rhythm as a "speaking" cue. When idle/connecting, bars
-                  rest at a minimum height. */}
+              {/* Waveform visualizer. Bars track Sam's outgoing audio
+                  amplitude (agentVolume, 0..1 RMS). When she's silent
+                  or the user is talking, bars rest at the minimum
+                  height. Center bars amplify most, edges stay smaller,
+                  so the shape feels like a real voice waveform. */}
               <div
                 className="flex-1 flex items-center justify-center gap-1 h-[56px] rounded-2xl bg-bg border border-border"
-                aria-label={voice.isSpeaking ? "Sam is speaking" : vadScore > 0.1 ? "You are speaking" : "Listening"}
+                aria-label={voice.isSpeaking ? "Sam is speaking" : "Listening"}
               >
                 {[0, 1, 2, 3, 4, 5, 6].map((i) => {
-                  // Each bar gets a stable phase offset so the group
-                  // doesn't pulse in lockstep; the center bars respond
-                  // most to input (like a real waveform).
-                  const centerBias = 1 - Math.abs(i - 3) / 3; // 0..1..0
-                  let heightPx = 6;
-                  if (voice.isSpeaking) {
-                    // Gentle breathing animation so the user can tell
-                    // Sam is talking back.
-                    heightPx = 10 + centerBias * 14;
-                  } else if (voice.status === "connected") {
-                    // Scale bar height by live VAD score. Center bars
-                    // amplify more; edges stay smaller.
-                    const amplified = Math.min(1, vadScore * 1.8);
-                    heightPx = 6 + amplified * centerBias * 34 + amplified * 6;
-                  }
+                  const centerBias = 1 - Math.abs(i - 3) / 3;
+                  const amp = Math.min(1, agentVolume * 1.5);
+                  const heightPx = 6 + amp * centerBias * 34 + amp * 6;
                   return (
                     <span
                       key={i}
-                      className={`inline-block w-1 rounded-full transition-[height] duration-75 ease-out ${
-                        voice.isSpeaking ? "bg-primary" : "bg-primary/80"
-                      }`}
+                      className="inline-block w-1 rounded-full bg-primary transition-[height] duration-75 ease-out"
                       style={{ height: `${heightPx}px` }}
                     />
                   );
