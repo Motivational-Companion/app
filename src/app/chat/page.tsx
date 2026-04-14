@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import TextConversation from "@/components/TextConversation";
-import Conversation from "@/components/Conversation";
 import SplitPaneChatLayout from "@/components/SplitPaneChatLayout";
 import type { OnboardingData } from "@/lib/types";
 import type { NoteItem } from "@/components/LiveLists";
@@ -47,8 +46,6 @@ export default function ChatPage() {
   const [pendingSuggestion, setPendingSuggestion] = useState<string | null>(
     null
   );
-  // Two modes only: chat (default, the workspace) or voice (overlay).
-  const [mode, setMode] = useState<"chat" | "voice">("chat");
   // Picked once based on whether the user has active tasks on arrival.
   // null = not yet determined (still loading).
   const [chatMode, setChatMode] = useState<"chat" | "checkin" | null>(null);
@@ -210,18 +207,6 @@ export default function ChatPage() {
     );
   }
 
-  // Voice overlay. Back button returns to the workspace.
-  if (mode === "voice") {
-    return (
-      <Conversation
-        onBack={() => setMode("chat")}
-        onboardingData={onboardingData}
-        onNoteAdded={handleNoteAdded}
-      />
-    );
-  }
-
-  // Default: the workspace
   return (
     <SplitPaneChatLayout
       issues={authTasks.issues}
@@ -237,7 +222,6 @@ export default function ChatPage() {
         chatMode={chatMode}
         onNoteAdded={handleNoteAdded}
         onNoteUpdated={handleNoteUpdated}
-        onOpenVoice={() => setMode("voice")}
         embedded
         initialInput={pendingSuggestion ?? undefined}
         existingTasks={existingTasksString}

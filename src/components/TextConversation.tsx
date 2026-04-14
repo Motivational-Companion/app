@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import { useConversation } from "@elevenlabs/react";
 import type { ChatMessage, OnboardingData } from "@/lib/types";
 import {
   SAM_FIRST_MESSAGE,
@@ -62,6 +63,17 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [taskContext, setTaskContext] = useState<string | null>(null);
+
+  // Inline voice state. The mic button in the input row starts an
+  // ElevenLabs session; while it's active the input area becomes a
+  // waveform with a mic-settings gear on the left and a stop button
+  // on the right. No full-screen overlay.
+  const [voiceActive, setVoiceActive] = useState(false);
+  const [mics, setMics] = useState<MediaDeviceInfo[]>([]);
+  const [selectedMic, setSelectedMic] = useState<string>("");
+  const [micMenuOpen, setMicMenuOpen] = useState(false);
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+  const voiceConvoIdRef = useRef<string | null>(null);
 
   // Live lists
   const [issues, setIssues] = useState<NoteItem[]>([]);
@@ -249,6 +261,104 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
     },
     [onNoteAdded, onNoteUpdated, messages.length]
   );
+
+  // ── Inline voice session (ElevenLabs) ──
+  // Shares the same conversation row as text via voiceConvoIdRef so
+  // onMessage turns land in the persistent thread.
+  const voice = useConversation({
+    clientTools: {
+      note_issue: async (params: { title: string }) => {
+        handleNote("note_issue", { title: params.title });
+        return "Noted.";
+      },
+      note_goal: async (params: { title: string }) => {
+        handleNote("note_goal", { title: params.title });
+        return "Noted.";
+      },
+      note_task: async (params: { title: string; timeframe?: string }) => {
+        handleNote("note_task", { title: params.title, timeframe: params.timeframe });
+        return "Noted.";
+      },
+    },
+    onConnect: () => setVoiceError(null),
+    onDisconnect: () => {
+      setVoiceActive(false);
+    },
+    onError: (message: string) => setVoiceError(message),
+    onMessage: (payload) => {
+      const role: "user" | "assistant" = payload.source === "user" ? "user" : "assistant";
+      // Show the voice turn in the chat transcript so the user can see
+      // what they said and what Sam said, alongside text turns.
+      setMessages((prev) => [...prev, { role, content: payload.message }]);
+      // Persist to the shared conversation thread.
+      if (supabase && voiceConvoIdRef.current) {
+        saveMessage(supabase, voiceConvoIdRef.current, role, payload.message);
+      }
+    },
+  });
+
+  const startVoice = useCallback(async () => {
+    setVoiceError(null);
+    try {
+      const agentId = process.env.NEXT_PUBLIC_ELEVENLABS_AGENT_ID;
+      if (!agentId) {
+        setVoiceError("Voice agent not configured.");
+        return;
+      }
+
+      // Permission + device enumeration happen lazily here so the text
+      // surface never asks for mic access unless the user opts in.
+      if (mics.length === 0) {
+        try {
+          await navigator.mediaDevices.getUserMedia({ audio: true });
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          const audioInputs = devices.filter((d) => d.kind === "audioinput");
+          setMics(audioInputs);
+          if (audioInputs.length > 0 && !selectedMic) {
+            setSelectedMic(audioInputs[0].deviceId);
+          }
+        } catch {
+          setVoiceError("Microphone access is required.");
+          return;
+        }
+      }
+
+      // Reuse the user's shared conversation row so voice turns persist
+      // into the same thread as text.
+      if (user && supabase && !voiceConvoIdRef.current) {
+        const id = await getOrCreateActiveConversation(supabase, user.id, "voice");
+        if (id) voiceConvoIdRef.current = id;
+      }
+
+      const dynamicVariables: Record<string, string> = {};
+      if (onboardingData) {
+        if (onboardingData.bringYouHere) dynamicVariables.bring_you_here = String(onboardingData.bringYouHere);
+        if (onboardingData.vision) dynamicVariables.vision = String(onboardingData.vision);
+        if (onboardingData.priorityArea) dynamicVariables.priority_area = String(onboardingData.priorityArea);
+        if (onboardingData.coachingStyle) dynamicVariables.coaching_style = String(onboardingData.coachingStyle);
+      }
+
+      await voice.startSession({
+        agentId,
+        connectionType: "websocket",
+        ...(selectedMic ? { inputDeviceId: selectedMic } : {}),
+        ...(Object.keys(dynamicVariables).length > 0 ? { dynamicVariables } : {}),
+      });
+      setVoiceActive(true);
+    } catch (err) {
+      setVoiceError(err instanceof Error ? err.message : String(err));
+    }
+  }, [voice, mics, selectedMic, onboardingData, user, supabase]);
+
+  const stopVoice = useCallback(async () => {
+    try {
+      await voice.endSession();
+    } catch {
+      // ignore
+    }
+    setVoiceActive(false);
+    setMicMenuOpen(false);
+  }, [voice]);
 
   const sendMessage = useCallback(async () => {
     const text = input.trim();
@@ -528,74 +638,134 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
           </div>
         )}
 
-        {/* Input */}
+        {/* Input / voice bar */}
         <div className="px-5 pb-5 pt-4 border-t border-border shrink-0">
-          <div className="flex items-end gap-2">
-            <textarea
-              ref={inputRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Brain dump here. What's on your mind?"
-              disabled={isStreaming}
-              rows={2}
-              className="flex-1 resize-none rounded-2xl border border-border bg-bg px-4 py-3 text-[15px] text-text leading-snug
-                         placeholder:text-text-muted focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/15 transition-all
-                         disabled:opacity-50 min-h-[56px] max-h-32"
-              style={{ fieldSizing: "content" } as React.CSSProperties}
-            />
-            {input.trim() || !onOpenVoice ? (
-              <button
-                onClick={sendMessage}
-                disabled={!input.trim() || isStreaming}
-                aria-label="Send message"
-                className="h-11 w-11 rounded-full bg-primary text-white flex items-center justify-center
-                           hover:bg-primary-dark active:scale-95 transition-all
-                           disabled:bg-border disabled:text-text-muted disabled:cursor-default"
-              >
-                <svg
-                  width="18"
-                  height="18"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
+          {voiceError && (
+            <p className="text-xs text-red-600 mb-2">{voiceError}</p>
+          )}
+          {voiceActive ? (
+            <div className="flex items-center gap-2">
+              {/* Mic settings gear */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setMicMenuOpen((v) => !v)}
+                  aria-label="Microphone settings"
+                  title="Microphone settings"
+                  className="h-11 w-11 rounded-full flex items-center justify-center text-text-soft hover:bg-bg hover:text-primary transition-colors"
                 >
-                  <line x1="22" y1="2" x2="11" y2="13" />
-                  <polygon points="22 2 15 22 11 13 2 9 22 2" />
-                </svg>
-              </button>
-            ) : (
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <circle cx="12" cy="12" r="3" />
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                  </svg>
+                </button>
+                {micMenuOpen && (
+                  <div role="menu" className="absolute bottom-full left-0 mb-2 w-64 bg-card border border-border rounded-xl shadow-lg py-1 overflow-hidden z-10">
+                    <p className="px-3 py-2 text-xs font-semibold uppercase tracking-wider text-text-muted border-b border-border">
+                      Microphone
+                    </p>
+                    {mics.length === 0 ? (
+                      <p className="px-3 py-2 text-sm text-text-muted">No devices</p>
+                    ) : (
+                      mics.map((mic) => (
+                        <button
+                          key={mic.deviceId}
+                          type="button"
+                          onClick={() => {
+                            setSelectedMic(mic.deviceId);
+                            setMicMenuOpen(false);
+                          }}
+                          className={`block w-full text-left px-3 py-2 text-sm truncate transition-colors ${
+                            mic.deviceId === selectedMic
+                              ? "bg-primary/5 text-primary font-medium"
+                              : "text-text hover:bg-bg"
+                          }`}
+                        >
+                          {mic.label || `Microphone ${mic.deviceId.slice(0, 6)}`}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Waveform visualizer */}
+              <div
+                className="flex-1 flex items-center justify-center gap-1 h-[56px] rounded-2xl bg-bg border border-border"
+                aria-label={voice.isSpeaking ? "Sam is speaking" : "Listening"}
+              >
+                {[0, 1, 2, 3, 4, 5, 6].map((i) => (
+                  <span
+                    key={i}
+                    className={`inline-block w-1 rounded-full ${voice.isSpeaking ? "bg-primary" : "bg-primary/50"}`}
+                    style={{
+                      height: `${12 + (i % 3) * 8}px`,
+                      animation: voice.status === "connected" ? `wave 1.2s ease-in-out ${i * 0.08}s infinite` : "none",
+                    }}
+                  />
+                ))}
+              </div>
+
+              {/* Stop button */}
               <button
-                onClick={onOpenVoice}
+                type="button"
+                onClick={stopVoice}
+                aria-label="Stop voice"
+                title="Stop voice"
+                className="h-11 w-11 rounded-full bg-primary text-white flex items-center justify-center hover:bg-primary-dark active:scale-95 transition-all"
+              >
+                <span className="block w-3.5 h-3.5 bg-white rounded-sm" aria-hidden="true" />
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-end gap-2">
+              <textarea
+                ref={inputRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Brain dump here. What's on your mind?"
                 disabled={isStreaming}
-                aria-label="Start voice conversation"
-                title="Start voice conversation"
-                className="h-11 w-11 rounded-full bg-primary text-white flex items-center justify-center
-                           hover:bg-primary-dark active:scale-95 transition-all
-                           disabled:bg-border disabled:text-text-muted disabled:cursor-default"
-              >
-                <svg
-                  width="18"
-                  height="18"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
+                rows={2}
+                className="flex-1 resize-none rounded-2xl border border-border bg-bg px-4 py-3 text-[15px] text-text leading-snug
+                           placeholder:text-text-muted focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/15 transition-all
+                           disabled:opacity-50 min-h-[56px] max-h-32"
+                style={{ fieldSizing: "content" } as React.CSSProperties}
+              />
+              {input.trim() ? (
+                <button
+                  onClick={sendMessage}
+                  disabled={!input.trim() || isStreaming}
+                  aria-label="Send message"
+                  className="h-11 w-11 rounded-full bg-primary text-white flex items-center justify-center
+                             hover:bg-primary-dark active:scale-95 transition-all
+                             disabled:bg-border disabled:text-text-muted disabled:cursor-default"
                 >
-                  <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-                  <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                  <line x1="12" y1="19" x2="12" y2="23" />
-                  <line x1="8" y1="23" x2="16" y2="23" />
-                </svg>
-              </button>
-            )}
-          </div>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="22" y1="2" x2="11" y2="13" />
+                    <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                  </svg>
+                </button>
+              ) : (
+                <button
+                  onClick={startVoice}
+                  disabled={isStreaming}
+                  aria-label="Start voice conversation"
+                  title="Start voice conversation"
+                  className="h-11 w-11 rounded-full bg-primary text-white flex items-center justify-center
+                             hover:bg-primary-dark active:scale-95 transition-all
+                             disabled:bg-border disabled:text-text-muted disabled:cursor-default"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                    <line x1="12" y1="19" x2="12" y2="23" />
+                    <line x1="8" y1="23" x2="16" y2="23" />
+                  </svg>
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
