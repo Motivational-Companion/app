@@ -22,6 +22,7 @@ type Props = {
   onboardingData?: OnboardingData | null;
   chatMode?: "chat" | "checkin";
   onNoteAdded?: (listKey: "issues" | "goals" | "tasks", item: NoteItem) => void;
+  onNoteUpdated?: (listKey: "issues" | "goals" | "tasks", item: NoteItem) => void;
   existingTasks?: string;
   /**
    * When true, the chat is rendered inside a parent card (e.g.
@@ -47,7 +48,7 @@ type Props = {
    */
 };
 
-export default function TextConversation({ onBack, onboardingData, chatMode = "chat", onNoteAdded, existingTasks, embedded = false, initialInput, onOpenVoice }: Props) {
+export default function TextConversation({ onBack, onboardingData, chatMode = "chat", onNoteAdded, onNoteUpdated, existingTasks, embedded = false, initialInput, onOpenVoice }: Props) {
   const firstMessage = chatMode === "checkin"
     ? SAM_CHECKIN_FIRST_MESSAGE
     : onboardingData
@@ -176,11 +177,17 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
   }, [isStreaming]);
 
   const handleNote = useCallback(
-    (tool: string, data: { title: string; timeframe?: string }) => {
+    (tool: string, data: { title: string; timeframe?: string; id?: string }) => {
       const normalize = (s: string) => s.toLowerCase().trim().replace(/\b(a|an|the|my|your|get|to)\b/g, "").replace(/\s+/g, " ").trim();
-      const isDuplicate = (prev: NoteItem[]) => {
+      const findMatchIndex = (prev: NoteItem[]): number => {
+        // Explicit id from Sam wins — it's an intentional update.
+        if (data.id) {
+          const byId = prev.findIndex((item) => item.id === data.id);
+          if (byId !== -1) return byId;
+        }
         const incoming = normalize(data.title);
-        return prev.some((item) => {
+        if (!incoming) return -1;
+        return prev.findIndex((item) => {
           const existing = normalize(item.text);
           return existing === incoming || existing.includes(incoming) || incoming.includes(existing);
         });
@@ -188,9 +195,29 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
 
       const setter =
         tool === "note_issue" ? setIssues : tool === "note_goal" ? setGoals : setTasks;
+      const listKey = tool === "note_issue" ? "issues" as const : tool === "note_goal" ? "goals" as const : "tasks" as const;
+      const category = tool === "note_issue" ? "issue" as const : tool === "note_goal" ? "goal" as const : "task" as const;
 
       setter((prev) => {
-        if (isDuplicate(prev)) return prev;
+        const matchIndex = findMatchIndex(prev);
+
+        // Update path: Sam is refining an existing item. Replace the
+        // matched row with the newer title/timeframe so users see the
+        // refinement rather than a duplicate.
+        if (matchIndex !== -1) {
+          const existing = prev[matchIndex];
+          const updated: NoteItem = {
+            ...existing,
+            text: data.title,
+            timeframe: data.timeframe ?? existing.timeframe,
+          };
+          const next = [...prev];
+          next[matchIndex] = updated;
+          if (onNoteUpdated) onNoteUpdated(listKey, updated);
+          return next;
+        }
+
+        // Insert path.
         const item: NoteItem = {
           id: crypto.randomUUID(),
           text: data.title,
@@ -199,9 +226,6 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
         };
         setLastAdded(item.id);
         trackEvent("task_extracted", { category: tool, title: data.title });
-
-        // Show inline card in chat
-        const category = tool === "note_issue" ? "issue" as const : tool === "note_goal" ? "goal" as const : "task" as const;
         setNoteCards((cards) => [...cards, {
           id: item.id,
           category,
@@ -209,15 +233,11 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
           timeframe: data.timeframe,
           afterMessageIndex: messages.length - 1,
         }]);
-
-        // Notify parent (board persistence)
-        const listKey = tool === "note_issue" ? "issues" as const : tool === "note_goal" ? "goals" as const : "tasks" as const;
         if (onNoteAdded) onNoteAdded(listKey, item);
-
         return [...prev, item];
       });
     },
-    [onNoteAdded]
+    [onNoteAdded, onNoteUpdated, messages.length]
   );
 
   const sendMessage = useCallback(async () => {

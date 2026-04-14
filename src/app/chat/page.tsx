@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import TextConversation from "@/components/TextConversation";
 import Conversation from "@/components/Conversation";
 import SplitPaneChatLayout from "@/components/SplitPaneChatLayout";
@@ -11,6 +11,7 @@ import {
   saveTasks,
   loadActiveTasks,
   updateTaskStatus,
+  updateTaskFields,
   deleteTask,
 } from "@/lib/supabase/data";
 
@@ -101,6 +102,23 @@ export default function ChatPage() {
     [user, supabase]
   );
 
+  // Sam refined an existing item — persist title/timeframe change and
+  // reflect in local state so the focus panel updates in place.
+  const handleNoteUpdated = useCallback(
+    (listKey: ListKey, item: NoteItem) => {
+      setAuthTasks((prev) => ({
+        ...prev,
+        [listKey]: prev[listKey].map((row) => (row.id === item.id ? item : row)),
+      }));
+      if (!supabase) return;
+      updateTaskFields(supabase, item.id, {
+        title: item.text,
+        timeframe: item.timeframe ?? null,
+      }).catch((err) => console.error("Failed to persist task update:", err));
+    },
+    [supabase]
+  );
+
   // Toggle done. Optimistic, reverts on Supabase error.
   const handleToggleDone = useCallback(
     async (_listKey: ListKey, id: string) => {
@@ -171,6 +189,18 @@ export default function ChatPage() {
     setPendingSuggestion(text);
   }, []);
 
+  // Format the user's existing board items as a string with ids so Sam
+  // can reference them by id when refining instead of duplicating.
+  const existingTasksString = useMemo(() => {
+    const lines: string[] = [];
+    for (const item of authTasks.issues) lines.push(`Issue [${item.id}] ${item.text}`);
+    for (const item of authTasks.goals) lines.push(`Goal [${item.id}] ${item.text}`);
+    for (const item of authTasks.tasks) {
+      lines.push(`Task [${item.id}] ${item.text}${item.timeframe ? ` (${item.timeframe})` : ""}`);
+    }
+    return lines.length > 0 ? lines.join("\n") : undefined;
+  }, [authTasks]);
+
   // Loading spinner covers: auth check, task load, chatMode selection.
   if (authLoading || !user || !supabase || chatMode === null) {
     return (
@@ -206,9 +236,11 @@ export default function ChatPage() {
         onboardingData={onboardingData}
         chatMode={chatMode}
         onNoteAdded={handleNoteAdded}
+        onNoteUpdated={handleNoteUpdated}
         onOpenVoice={() => setMode("voice")}
         embedded
         initialInput={pendingSuggestion ?? undefined}
+        existingTasks={existingTasksString}
       />
     </SplitPaneChatLayout>
   );

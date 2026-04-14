@@ -190,6 +190,26 @@ export async function loadActiveTasks(supabase: SupabaseClient, userId: string) 
   return { issues, goals, tasks };
 }
 
+export async function updateTaskFields(
+  supabase: SupabaseClient,
+  taskId: string,
+  fields: { title?: string; timeframe?: string | null }
+) {
+  const updates: Record<string, unknown> = {};
+  if (fields.title !== undefined) updates.title = fields.title;
+  if (fields.timeframe !== undefined) updates.timeframe = fields.timeframe;
+  if (Object.keys(updates).length === 0) return;
+
+  const { error } = await supabase
+    .from("tasks")
+    .update(updates)
+    .eq("id", taskId);
+  if (error) {
+    console.error("Failed to update task fields:", error);
+    throw error;
+  }
+}
+
 export async function updateTaskStatus(
   supabase: SupabaseClient,
   taskId: string,
