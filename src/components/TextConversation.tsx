@@ -14,6 +14,7 @@ import {
   getOrCreateActiveConversation,
   saveMessage,
   loadActiveTasks,
+  loadMessages,
 } from "@/lib/supabase/data";
 import { trackEvent } from "@/lib/analytics";
 
@@ -88,17 +89,26 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
   const { user, supabase } = useAuth();
   const conversationIdRef = useRef<string | null>(null);
 
-  // Reuse the user's single active conversation when authenticated.
-  // We intentionally exclude `firstMessage` from the dep array — it's only
-  // used inside the one-time greeting save and referencing it would cause
-  // the effect to re-run on every render that recomputes the greeting.
+  // Reuse the user's single active conversation when authenticated, then
+  // hydrate the message list from history so returning users see the full
+  // thread (including anything said via the voice surface, since voice +
+  // text share one conversation row). If history is empty, keep the
+  // synthesized greeting already in state.
   useEffect(() => {
     if (!user || !supabase || conversationIdRef.current) return;
     let cancelled = false;
-    getOrCreateActiveConversation(supabase, user.id, "text").then((id) => {
+    (async () => {
+      const id = await getOrCreateActiveConversation(supabase, user.id, "text");
       if (cancelled || !id) return;
       conversationIdRef.current = id;
-    });
+      const history = await loadMessages(supabase, id);
+      if (cancelled || history.length === 0) return;
+      // User has prior messages — show them instead of the cold greeting.
+      // Mark userHasSent so the check-in greeting upgrade effect doesn't
+      // overwrite history.
+      userHasSentRef.current = true;
+      setMessages(history);
+    })();
     return () => {
       cancelled = true;
     };

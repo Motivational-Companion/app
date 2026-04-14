@@ -2,9 +2,14 @@
 
 import { useConversation } from "@elevenlabs/react";
 import type { DisconnectionDetails, Mode, Status } from "@elevenlabs/react";
-import { useCallback, useState, useEffect } from "react";
+import { useCallback, useState, useEffect, useRef } from "react";
 import LiveLists, { type NoteItem } from "@/components/LiveLists";
 import type { OnboardingData } from "@/lib/types";
+import { useAuth } from "@/lib/supabase/useAuth";
+import {
+  getOrCreateActiveConversation,
+  saveMessage,
+} from "@/lib/supabase/data";
 
 type Props = {
   onBack?: () => void;
@@ -16,6 +21,24 @@ export default function Conversation({ onBack, onboardingData, onNoteAdded }: Pr
   const [hasStarted, setHasStarted] = useState(false);
   const [micAllowed, setMicAllowed] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Share the same Supabase conversation row as the text surface so both
+  // modes append to one thread. Voice turns become part of the user's
+  // full history and show up when they return to the text chat.
+  const { user, supabase } = useAuth();
+  const conversationIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!user || !supabase || conversationIdRef.current) return;
+    let cancelled = false;
+    getOrCreateActiveConversation(supabase, user.id, "voice").then((id) => {
+      if (cancelled || !id) return;
+      conversationIdRef.current = id;
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [user, supabase]);
 
   // Mic selection
   const [mics, setMics] = useState<MediaDeviceInfo[]>([]);
@@ -123,7 +146,14 @@ export default function Conversation({ onBack, onboardingData, onNoteAdded }: Pr
         setError(`Disconnected: ${details.message}`);
       }
     },
-    onMessage: () => {},
+    onMessage: (payload) => {
+      // Persist every voice turn onto the shared conversation so text
+      // chat history stays complete across modes and sessions.
+      if (!supabase || !conversationIdRef.current) return;
+      const role: "user" | "assistant" =
+        payload.source === "user" ? "user" : "assistant";
+      saveMessage(supabase, conversationIdRef.current, role, payload.message);
+    },
     onError: (message: string) => setError(message),
     onStatusChange: (_payload: { status: Status }) => {},
     onModeChange: (_payload: { mode: Mode }) => {},
