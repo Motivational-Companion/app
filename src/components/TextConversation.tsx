@@ -369,19 +369,19 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
         if (onboardingData.coachingStyle) dynamicVariables.coaching_style = String(onboardingData.coachingStyle);
       }
 
-      // Summarize the last handful of text turns as prior_context so the
-      // voice agent can reference the thread. Requires the ElevenLabs
-      // agent template to consume this variable (e.g.
-      // "Prior conversation:\n{{prior_context}}" in the system prompt).
-      const recent = messages.slice(-10);
-      if (recent.length > 0) {
-        const transcript = recent
-          .map((m) => {
-            const speaker = m.role === "user" ? "User" : "Sam";
-            return `${speaker}: ${m.content}`;
-          })
+      // Summarize the last handful of text turns as prior_context. The
+      // agent prompt references {{prior_context}}. Exclude the cold
+      // synthesized greeting (it carries no real signal) so Sam only
+      // sees the prior thread when the user has actually chatted.
+      const realTurns = messages.filter(
+        (m, idx) => !(idx === 0 && m.role === "assistant")
+      );
+      const recent = realTurns.slice(-10);
+      const hasPriorContext = recent.length > 0;
+      if (hasPriorContext) {
+        dynamicVariables.prior_context = recent
+          .map((m) => `${m.role === "user" ? "User" : "Sam"}: ${m.content}`)
           .join("\n");
-        dynamicVariables.prior_context = transcript;
       }
 
       await voice.startSession({
@@ -389,6 +389,15 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
         connectionType: "websocket",
         ...(selectedMic ? { inputDeviceId: selectedMic } : {}),
         ...(Object.keys(dynamicVariables).length > 0 ? { dynamicVariables } : {}),
+        // When we have prior context, override the agent's hardcoded
+        // "Hey, I'm Sam..." first_message so she doesn't re-introduce
+        // herself and trigger a "fresh conversation" self-description.
+        // An empty string tells her to derive an opener from the prompt
+        // (which now instructs: "start with 'Hey, welcome back' and
+        // reference something specific").
+        ...(hasPriorContext
+          ? { overrides: { agent: { firstMessage: "" } } }
+          : {}),
       });
       setVoiceActive(true);
     } catch (err) {
