@@ -19,12 +19,21 @@ export type ChatMode = "chat" | "checkin";
 
 export type NotedItem = { tool: string; title: string };
 
+export type TaskFocusPayload = {
+  taskId: string;
+  title: string;
+  description?: string | null;
+  dueDate?: string | null;
+  subtasks?: Array<{ title: string; status: string }>;
+};
+
 export type ChatRequestBody = {
   messages: Array<{ role: string; content: string }>;
   onboardingContext?: Record<string, unknown>;
   mode?: string;
   taskContext?: string;
   existingTasks?: string;
+  taskFocus?: TaskFocusPayload;
 };
 
 /**
@@ -36,7 +45,8 @@ export function buildSystemPrompt(
   chatMode: ChatMode,
   onboardingContext?: Record<string, unknown>,
   taskContext?: string,
-  existingTasks?: string
+  existingTasks?: string,
+  taskFocus?: TaskFocusPayload
 ): string {
   let systemPrompt =
     chatMode === "checkin" ? SAM_CHECKIN_SYSTEM_PROMPT : SAM_TEXT_SYSTEM_PROMPT;
@@ -54,6 +64,20 @@ export function buildSystemPrompt(
 
   if (existingTasks) {
     systemPrompt += `\n\n## Existing Board Items\nThe user already has these items on their board (format: "[id] title"):\n${existingTasks}\nDo NOT re-note items that are already on their board. Only use note tools for NEW items. If the user refines one of the existing items (changes scope, deadline, or phrasing), call the matching note tool with that item's id so the row updates in place instead of duplicating.`;
+  }
+
+  if (taskFocus) {
+    const subtasks =
+      taskFocus.subtasks && taskFocus.subtasks.length > 0
+        ? taskFocus.subtasks
+            .map((s) => `- [${s.status === "completed" ? "x" : " "}] ${s.title}`)
+            .join("\n")
+        : "(none yet)";
+    const due = taskFocus.dueDate ? `\nDue: ${taskFocus.dueDate}` : "";
+    const desc = taskFocus.description
+      ? `\n\nCurrent description:\n${taskFocus.description}`
+      : "\n\n(No description yet.)";
+    systemPrompt += `\n\n## Current Task Focus\nYou are helping the user work on this specific task. Stay focused on it. Ask clarifying questions about scope, timeline, and approach. Break it into concrete subtasks if that helps the user move.\n\nTask: "${taskFocus.title}"${due}${desc}\n\nSubtasks:\n${subtasks}\n\nWhen the conversation reveals meaningful new detail (scope, timeline, approach, constraints), call the update_task_description tool with a refined description that captures the full context. This description is what the user (and you) will read when returning to this task later, so write it as durable context, not as a summary of this chat.`;
   }
 
   return systemPrompt;

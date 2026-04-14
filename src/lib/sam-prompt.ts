@@ -381,6 +381,30 @@ export const NOTE_TASK_TOOL = {
 };
 
 /**
+ * Tool for refining a task's long-form description while in its
+ * dedicated pane. Fires only in the task-focus chat surface (i.e.
+ * when the request body carries taskFocus). Sam is instructed to
+ * call this when the conversation reveals durable context about
+ * scope / timeline / approach that would help on return visits.
+ */
+export const UPDATE_TASK_DESCRIPTION_TOOL = {
+  name: "update_task_description",
+  description:
+    "Update the current task's durable description with refined context about scope, timeline, approach, or constraints. Only call when focused on a specific task (the system prompt will include 'Current Task Focus' context). Write for a future reader returning to the task, not a summary of this chat.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      description: {
+        type: "string",
+        description:
+          "The full refined description. Replaces (not appends to) the prior description.",
+      },
+    },
+    required: ["description"],
+  },
+};
+
+/**
  * Sam's system prompt for daily check-in conversations.
  * Shorter and more focused than the initial conversation.
  * Reviews yesterday's progress and plans today.

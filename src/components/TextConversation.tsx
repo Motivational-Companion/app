@@ -46,11 +46,33 @@ type Props = {
    */
   onOpenVoice?: () => void;
   /**
-   * If provided, renders a small Sign out link in the header.
+   * Scope the chat to a specific conversation row (e.g. a task's
+   * dedicated thread) instead of resolving the user's global
+   * brain-dump conversation. When present, message history loads from
+   * this id and outgoing messages persist to it.
    */
+  conversationIdOverride?: string | null;
+  /**
+   * Current task context. When set, Sam is briefed that she's focused
+   * on this task and may call the update_task_description tool to
+   * refine its long-form description as the conversation reveals new
+   * scope, timeline, or approach.
+   */
+  taskFocus?: {
+    taskId: string;
+    title: string;
+    description?: string | null;
+    dueDate?: string | null;
+    subtasks?: Array<{ title: string; status: string }>;
+  } | null;
+  /**
+   * Called when Sam emits an update_task_description tool call so the
+   * pane can reflect the refined description live.
+   */
+  onTaskDescriptionUpdated?: (taskId: string, description: string) => void;
 };
 
-export default function TextConversation({ onBack, onboardingData, chatMode = "chat", onNoteAdded, onNoteUpdated, existingTasks, embedded = false, initialInput, onOpenVoice }: Props) {
+export default function TextConversation({ onBack, onboardingData, chatMode = "chat", onNoteAdded, onNoteUpdated, existingTasks, embedded = false, initialInput, onOpenVoice, conversationIdOverride, taskFocus, onTaskDescriptionUpdated }: Props) {
   const firstMessage = chatMode === "checkin"
     ? SAM_CHECKIN_FIRST_MESSAGE
     : onboardingData
@@ -106,23 +128,20 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
   const { user, supabase } = useAuth();
   const conversationIdRef = useRef<string | null>(null);
 
-  // Reuse the user's single active conversation when authenticated, then
-  // hydrate the message list from history so returning users see the full
-  // thread (including anything said via the voice surface, since voice +
-  // text share one conversation row). If history is empty, keep the
-  // synthesized greeting already in state.
+  // Resolve the conversation row and hydrate from history. When a
+  // conversationIdOverride is passed (task detail pane), we skip the
+  // active-conversation lookup and use the given id directly.
   useEffect(() => {
     if (!user || !supabase || conversationIdRef.current) return;
     let cancelled = false;
     (async () => {
-      const id = await getOrCreateActiveConversation(supabase, user.id, "text");
+      const id =
+        conversationIdOverride ??
+        (await getOrCreateActiveConversation(supabase, user.id, "text"));
       if (cancelled || !id) return;
       conversationIdRef.current = id;
       const history = await loadMessages(supabase, id);
       if (cancelled || history.length === 0) return;
-      // User has prior messages — show them instead of the cold greeting.
-      // Mark userHasSent so the check-in greeting upgrade effect doesn't
-      // overwrite history.
       userHasSentRef.current = true;
       setMessages(history);
     })();
@@ -444,6 +463,7 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
           ...(chatMode === "checkin" ? { mode: "checkin" } : {}),
           ...(taskContext ? { taskContext } : {}),
           ...(existingTasks ? { existingTasks } : {}),
+          ...(taskFocus ? { taskFocus } : {}),
         }),
       });
 
@@ -489,6 +509,15 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
               });
             } else if (event.type === "note") {
               handleNote(event.tool, event.data);
+            } else if (event.type === "task_update") {
+              if (
+                taskFocus &&
+                event.taskId === taskFocus.taskId &&
+                typeof event.description === "string" &&
+                onTaskDescriptionUpdated
+              ) {
+                onTaskDescriptionUpdated(event.taskId, event.description);
+              }
             } else if (event.type === "error") {
               throw new Error(event.message);
             }
