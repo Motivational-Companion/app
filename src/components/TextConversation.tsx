@@ -45,10 +45,9 @@ type Props = {
   /**
    * If provided, renders a small Sign out link in the header.
    */
-  onSignOut?: () => void;
 };
 
-export default function TextConversation({ onBack, onboardingData, chatMode = "chat", onNoteAdded, existingTasks, embedded = false, initialInput, onOpenVoice, onSignOut }: Props) {
+export default function TextConversation({ onBack, onboardingData, chatMode = "chat", onNoteAdded, existingTasks, embedded = false, initialInput, onOpenVoice }: Props) {
   const firstMessage = chatMode === "checkin"
     ? SAM_CHECKIN_FIRST_MESSAGE
     : onboardingData
@@ -396,14 +395,6 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
                   <line x1="12" y1="19" x2="12" y2="23" />
                   <line x1="8" y1="23" x2="16" y2="23" />
                 </svg>
-              </button>
-            )}
-            {onSignOut && (
-              <button
-                onClick={onSignOut}
-                className="text-xs text-text-muted hover:text-text-soft transition-colors px-2 py-1"
-              >
-                Sign out
               </button>
             )}
           </div>

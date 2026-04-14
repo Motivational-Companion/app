@@ -171,15 +171,10 @@ export default function ChatPage() {
     setPendingSuggestion(text);
   }, []);
 
-  const handleSignOut = useCallback(async () => {
-    if (supabase) await supabase.auth.signOut();
-    window.location.href = "/";
-  }, [supabase]);
-
   // Loading spinner covers: auth check, task load, chatMode selection.
   if (authLoading || !user || !supabase || chatMode === null) {
     return (
-      <div className="min-h-[100dvh] bg-bg flex justify-center items-center">
+      <div className="flex justify-center items-center h-full min-h-[50vh]">
         <div className="w-8 h-8 rounded-full border-2 border-primary border-t-transparent animate-spin" />
       </div>
     );
@@ -212,7 +207,6 @@ export default function ChatPage() {
         chatMode={chatMode}
         onNoteAdded={handleNoteAdded}
         onOpenVoice={() => setMode("voice")}
-        onSignOut={handleSignOut}
         embedded
         initialInput={pendingSuggestion ?? undefined}
       />
