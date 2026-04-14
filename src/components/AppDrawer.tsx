@@ -74,7 +74,7 @@ export default function AppDrawer({ onRequestClose, onCollapse }: Props) {
         <Link
           href="/chat"
           onClick={onRequestClose}
-          className={`flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
+          className={`flex-1 min-w-0 flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
             pathname === "/chat"
               ? "border-primary/40 bg-primary/10 text-primary"
               : "border-border bg-card md:bg-card text-text hover:border-primary/40"
