@@ -195,6 +195,16 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
     []
   );
 
+  // Always-current messages length so handleNote (fired from the SSE
+  // streaming loop) anchors inline note cards to the correct message
+  // index. Without this, the closure captured at last render may still
+  // reflect the pre-stream length and cards land above the user turn
+  // that triggered them.
+  const messagesLengthRef = useRef(0);
+  useEffect(() => {
+    messagesLengthRef.current = messages.length;
+  }, [messages.length]);
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
@@ -258,13 +268,13 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
           category,
           text: data.title,
           timeframe: data.timeframe,
-          afterMessageIndex: messages.length - 1,
+          afterMessageIndex: Math.max(0, messagesLengthRef.current - 1),
         }]);
         if (onNoteAdded) onNoteAdded(listKey, item);
         return [...prev, item];
       });
     },
-    [onNoteAdded, onNoteUpdated, messages.length]
+    [onNoteAdded, onNoteUpdated]
   );
 
   // ── Inline voice session (ElevenLabs) ──
