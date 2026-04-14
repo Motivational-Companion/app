@@ -581,13 +581,6 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
                   <div
                     className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
                   >
-                    {msg.role === "assistant" && (
-                      <div className="w-7 h-7 rounded-full bg-gradient-to-br from-accent to-primary flex items-center justify-center shrink-0 mr-2 mt-1">
-                        <span className="text-white text-xs font-semibold">
-                          S
-                        </span>
-                      </div>
-                    )}
                     <div
                       className={`max-w-[80%] px-4 py-3 rounded-2xl text-sm leading-relaxed ${
                         msg.role === "user"
@@ -613,7 +606,7 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
                   {cardsAfter.map((card) => (
                     <div
                       key={card.id}
-                      className="ml-9 mt-2 flex items-center gap-2.5 bg-bg border border-border rounded-xl px-3 py-2 animate-[fadeSlideIn_0.3s_ease-out]"
+                      className="mt-2 flex items-center gap-2.5 bg-bg border border-border rounded-xl px-3 py-2 animate-[fadeSlideIn_0.3s_ease-out]"
                     >
                       <span className="text-sm">
                         {card.category === "issue" ? "\uD83D\uDFE1" : card.category === "goal" ? "\uD83C\uDFAF" : "\u2705"}
@@ -779,38 +772,19 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
                            disabled:opacity-50 min-h-[56px] max-h-32"
                 style={{ fieldSizing: "content" } as React.CSSProperties}
               />
-              {input.trim() ? (
-                <button
-                  onClick={sendMessage}
-                  disabled={!input.trim() || isStreaming}
-                  aria-label="Send message"
-                  className="h-11 w-11 rounded-full bg-primary text-white flex items-center justify-center
-                             hover:bg-primary-dark active:scale-95 transition-all
-                             disabled:bg-border disabled:text-text-muted disabled:cursor-default"
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <line x1="22" y1="2" x2="11" y2="13" />
-                    <polygon points="22 2 15 22 11 13 2 9 22 2" />
-                  </svg>
-                </button>
-              ) : (
-                <button
-                  onClick={startVoice}
-                  disabled={isStreaming}
-                  aria-label="Start voice conversation"
-                  title="Start voice conversation"
-                  className="h-11 w-11 rounded-full bg-primary text-white flex items-center justify-center
-                             hover:bg-primary-dark active:scale-95 transition-all
-                             disabled:bg-border disabled:text-text-muted disabled:cursor-default"
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-                    <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                    <line x1="12" y1="19" x2="12" y2="23" />
-                    <line x1="8" y1="23" x2="16" y2="23" />
-                  </svg>
-                </button>
-              )}
+              <button
+                onClick={sendMessage}
+                disabled={!input.trim() || isStreaming}
+                aria-label="Send message"
+                className="h-11 w-11 rounded-full bg-primary text-white flex items-center justify-center
+                           hover:bg-primary-dark active:scale-95 transition-all
+                           disabled:bg-border disabled:text-text-muted disabled:cursor-default"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="22" y1="2" x2="11" y2="13" />
+                  <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                </svg>
+              </button>
             </div>
           )}
         </div>
