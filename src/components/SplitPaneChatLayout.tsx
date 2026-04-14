@@ -45,17 +45,19 @@ export default function SplitPaneChatLayout({
   const totalItems = issues.length + goals.length + tasks.length;
 
   return (
-    <div className="h-[calc(100dvh-56px)] md:h-[calc(100dvh-64px)] md:grid md:grid-cols-[560px_1fr] bg-bg">
-      <section className="h-full flex flex-col overflow-hidden bg-card md:border-r md:border-border">
+    <div className="h-[calc(100dvh-56px)] md:h-[calc(100dvh-64px)] md:grid md:grid-cols-[560px_1fr] bg-gradient-to-b from-bg to-accent-soft/15">
+      <section className="h-full flex flex-col overflow-hidden md:border-r md:border-border/40">
         {children}
       </section>
 
-      <aside className="hidden md:flex md:flex-col md:h-full overflow-y-auto bg-bg">
-        <div className="p-6 md:p-8 w-full max-w-[720px]">
-          <div className="mb-5 flex items-baseline justify-between">
-            <h2 className="text-base font-semibold text-text">Your focus</h2>
+      <aside className="hidden md:flex md:flex-col md:h-full overflow-y-auto">
+        <div className="p-8 md:p-10 w-full max-w-[720px]">
+          <div className="mb-7 flex items-baseline justify-between">
+            <h2 className="font-display text-xl font-semibold text-text-soft tracking-wide">
+              Your focus
+            </h2>
             {totalItems > 0 && (
-              <span className="text-xs text-text-muted tabular-nums">
+              <span className="text-[11px] uppercase tracking-wider text-text-muted">
                 {totalItems} {totalItems === 1 ? "item" : "items"}
               </span>
             )}
@@ -69,16 +71,16 @@ export default function SplitPaneChatLayout({
               </p>
               {onSuggestionClick && (
                 <>
-                  <p className="text-xs font-medium text-text-muted mb-2">
-                    Quick starts
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-3">
+                    Not sure what to say? Try one of these
                   </p>
-                  <div className="space-y-1.5">
+                  <div className="space-y-2">
                     {SUGGESTIONS.map((text) => (
                       <button
                         key={text}
                         type="button"
                         onClick={() => onSuggestionClick(text)}
-                        className="w-full text-left text-sm text-text bg-card border border-border hover:border-primary/40 rounded-lg px-3.5 py-2.5 transition-colors"
+                        className="w-full text-left text-sm text-text bg-card/60 hover:bg-card rounded-xl px-4 py-3 transition-colors shadow-[0_1px_2px_rgba(124,92,62,0.04)]"
                       >
                         &ldquo;{text}&rdquo;
                       </button>
