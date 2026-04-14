@@ -19,14 +19,16 @@ export default function ChatLayout({ children }: { children: ReactNode }) {
   return (
     <TaskStateProvider>
       <div className="min-h-[100dvh] bg-bg flex">
-        {/* Desktop drawer — persistent, collapsible */}
+        {/* Desktop drawer — persistent, collapsible. No onRequestClose
+            on link clicks (only the explicit collapse button closes it
+            on desktop), so navigating to a task keeps the drawer open. */}
         <aside
-          className={`hidden ${drawerOpen ? "md:flex" : "md:hidden"} md:flex-col w-[280px] shrink-0 border-r border-border h-[100dvh] sticky top-0`}
+          className={`hidden ${drawerOpen ? "md:flex" : "md:hidden"} md:flex-col w-[300px] shrink-0 border-r border-border h-[100dvh] sticky top-0`}
         >
-          <AppDrawer onRequestClose={() => setDrawerOpen(false)} />
+          <AppDrawer onCollapse={() => setDrawerOpen(false)} />
         </aside>
 
-        {/* Mobile drawer — slide-over */}
+        {/* Mobile drawer — slide-over. Closes on link click. */}
         {drawerOpen && (
           <>
             <div
@@ -34,21 +36,26 @@ export default function ChatLayout({ children }: { children: ReactNode }) {
               onClick={() => setDrawerOpen(false)}
               aria-hidden="true"
             />
-            <aside className="md:hidden fixed left-0 top-0 bottom-0 w-[280px] z-30 shadow-xl">
-              <AppDrawer onRequestClose={() => setDrawerOpen(false)} />
+            <aside className="md:hidden fixed left-0 top-0 bottom-0 w-[300px] z-30 shadow-xl">
+              <AppDrawer
+                onCollapse={() => setDrawerOpen(false)}
+                onRequestClose={() => setDrawerOpen(false)}
+              />
             </aside>
           </>
         )}
 
-        <div className="flex-1 min-h-0 min-w-0 flex flex-col">
-          {/* Thin sticky top bar — just the drawer toggle. No logo,
-              no account chip (both live in the drawer). */}
-          <div className="sticky top-0 z-10 bg-bg/90 backdrop-blur px-2 py-2">
+        <div className="flex-1 min-h-0 min-w-0 relative">
+          {/* Open-drawer toggle. Only renders when the drawer is closed
+              — when open, the same control lives inside the drawer's
+              sticky header (so the icon is always next to the drawer's
+              edge, never over the chat). */}
+          {!drawerOpen && (
             <button
               type="button"
-              onClick={() => setDrawerOpen((v) => !v)}
-              aria-label={drawerOpen ? "Close sidebar" : "Open sidebar"}
-              className="h-9 w-9 flex items-center justify-center text-text-soft hover:text-text rounded-lg hover:bg-card transition-colors"
+              onClick={() => setDrawerOpen(true)}
+              aria-label="Open sidebar"
+              className="absolute top-2 left-2 z-30 h-9 w-9 flex items-center justify-center text-text-soft hover:text-text rounded-lg bg-bg/70 backdrop-blur hover:bg-card transition-colors"
             >
               <svg
                 width="20"
@@ -68,8 +75,14 @@ export default function ChatLayout({ children }: { children: ReactNode }) {
                 <path d="M9 19v2" />
               </svg>
             </button>
-          </div>
-          <main className="flex-1 min-h-0 min-w-0">{children}</main>
+          )}
+          <main
+            className={`h-full min-h-[100dvh] min-w-0 ${
+              drawerOpen ? "" : "pl-12"
+            }`}
+          >
+            {children}
+          </main>
         </div>
       </div>
     </TaskStateProvider>

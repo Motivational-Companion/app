@@ -8,8 +8,12 @@ import { useTaskState, type ListKey } from "@/lib/task-state";
 import type { NoteItem } from "@/components/LiveLists";
 
 type Props = {
-  /** Close the drawer (mobile slide-over or desktop collapse). */
+  /** Mobile only: close the slide-over after a link click. Desktop
+      drawer should NOT collapse on link clicks. */
   onRequestClose?: () => void;
+  /** Explicit "collapse the drawer" button handler. Renders the
+      collapse icon in the sticky header when provided. */
+  onCollapse?: () => void;
 };
 
 type SectionKey = ListKey;
@@ -40,7 +44,7 @@ const SECTIONS: ReadonlyArray<{
   },
 ];
 
-export default function AppDrawer({ onRequestClose }: Props) {
+export default function AppDrawer({ onRequestClose, onCollapse }: Props) {
   const pathname = usePathname();
   const { user } = useAuth();
   const { issues, goals, tasks, completedIds, loading } = useTaskState();
@@ -64,15 +68,43 @@ export default function AppDrawer({ onRequestClose }: Props) {
 
   return (
     <div className="h-full flex flex-col bg-card md:bg-bg">
-      {/* Sticky header — primary destination lives here */}
-      <div className="shrink-0 px-3 pt-3 pb-2 border-b border-border">
+      {/* Sticky header: collapse toggle + primary destination */}
+      <div className="shrink-0 px-3 pt-2 pb-3 border-b border-border">
+        {onCollapse && (
+          <div className="flex items-center mb-2">
+            <button
+              type="button"
+              onClick={onCollapse}
+              aria-label="Collapse sidebar"
+              className="h-9 w-9 flex items-center justify-center text-text-soft hover:text-text rounded-lg hover:bg-card md:hover:bg-card transition-colors"
+            >
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <rect width="18" height="18" x="3" y="3" rx="2" />
+                <path d="M9 3v2" />
+                <path d="M9 9v1" />
+                <path d="M9 14v1" />
+                <path d="M9 19v2" />
+              </svg>
+            </button>
+          </div>
+        )}
         <Link
           href="/chat"
           onClick={onRequestClose}
-          className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+          className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${
             pathname === "/chat"
-              ? "bg-primary/10 text-primary"
-              : "text-text hover:bg-bg md:hover:bg-card"
+              ? "border-primary/40 bg-primary/10 text-primary"
+              : "border-border bg-card md:bg-card text-text hover:border-primary/40"
           }`}
         >
           <span
@@ -99,12 +131,20 @@ export default function AppDrawer({ onRequestClose }: Props) {
                 aria-expanded={isOpen}
               >
                 <span
-                  className={`w-5 h-5 flex items-center justify-center text-text-muted text-[11px] transition-transform ${
+                  className={`w-5 h-5 flex items-center justify-center text-text-muted transition-transform ${
                     isOpen ? "rotate-90" : ""
                   }`}
                   aria-hidden="true"
                 >
-                  ▸
+                  <svg
+                    width="10"
+                    height="10"
+                    viewBox="0 0 10 10"
+                    fill="currentColor"
+                    aria-hidden="true"
+                  >
+                    <polygon points="2,1 9,5 2,9" />
+                  </svg>
                 </span>
                 <span className="text-xs font-semibold uppercase tracking-wider flex-1 text-left">
                   {section.label}

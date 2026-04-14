@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import TextConversation from "@/components/TextConversation";
 import { useAuth } from "@/lib/supabase/useAuth";
 import {
+  addSubtask,
+  deleteTask,
   getOrCreateTaskConversation,
   loadTaskDetail,
   updateTaskDescription,
@@ -28,6 +30,7 @@ export default function TaskDetailPane({ taskId }: Props) {
   const { user, supabase } = useAuth();
   const [task, setTask] = useState<TaskRow | null>(null);
   const [parent, setParent] = useState<TaskRow | null>(null);
+  const [subtasks, setSubtasks] = useState<TaskRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
@@ -35,6 +38,7 @@ export default function TaskDetailPane({ taskId }: Props) {
   const [titleDraft, setTitleDraft] = useState("");
   const [descDraft, setDescDraft] = useState("");
   const [dueDraft, setDueDraft] = useState("");
+  const [newSubtask, setNewSubtask] = useState("");
   const loadedRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -51,6 +55,7 @@ export default function TaskDetailPane({ taskId }: Props) {
       }
       setTask(detail.task);
       setParent(detail.parent);
+      setSubtasks(detail.subtasks);
       setTitleDraft(detail.task.title);
       setDescDraft(detail.task.description ?? "");
       setDueDraft(formatDateForInput(detail.task.due_date));
@@ -113,6 +118,49 @@ export default function TaskDetailPane({ taskId }: Props) {
     }
   }, [supabase, task]);
 
+  const handleAddSubtask = useCallback(async () => {
+    if (!supabase || !user || !task) return;
+    const title = newSubtask.trim();
+    if (!title) return;
+    setNewSubtask("");
+    const row = await addSubtask(supabase, user.id, task.id, title);
+    if (row) setSubtasks((prev) => [...prev, row]);
+  }, [supabase, user, task, newSubtask]);
+
+  const handleToggleSubtask = useCallback(
+    async (subId: string, currentStatus: string) => {
+      if (!supabase) return;
+      const nextStatus = currentStatus === "completed" ? "active" : "completed";
+      setSubtasks((prev) =>
+        prev.map((s) => (s.id === subId ? { ...s, status: nextStatus as TaskRow["status"] } : s))
+      );
+      try {
+        await updateTaskStatus(supabase, subId, nextStatus);
+      } catch {
+        setSubtasks((prev) =>
+          prev.map((s) =>
+            s.id === subId ? { ...s, status: currentStatus as TaskRow["status"] } : s
+          )
+        );
+      }
+    },
+    [supabase]
+  );
+
+  const handleDeleteSubtask = useCallback(
+    async (subId: string) => {
+      if (!supabase) return;
+      const previous = subtasks;
+      setSubtasks((prev) => prev.filter((s) => s.id !== subId));
+      try {
+        await deleteTask(supabase, subId);
+      } catch {
+        setSubtasks(previous);
+      }
+    },
+    [supabase, subtasks]
+  );
+
   const taskFocus = useMemo(() => {
     if (!task) return null;
     return {
@@ -120,6 +168,10 @@ export default function TaskDetailPane({ taskId }: Props) {
       title: task.title,
       description: task.description,
       dueDate: task.due_date,
+      subtasks: subtasks.map((s) => ({
+        title: s.title,
+        status: s.status,
+      })),
       parent: parent
         ? {
             title: parent.title,
@@ -127,7 +179,7 @@ export default function TaskDetailPane({ taskId }: Props) {
           }
         : null,
     };
-  }, [task, parent]);
+  }, [task, parent, subtasks]);
 
   const handleDescriptionUpdatedBySam = useCallback(
     (_taskId: string, description: string) => {
@@ -175,11 +227,12 @@ export default function TaskDetailPane({ taskId }: Props) {
         )}
       </section>
 
-      {/* RIGHT: task detail panel — Asana style */}
-      <aside className="md:w-[380px] md:shrink-0 md:h-full md:overflow-y-auto bg-bg border-t md:border-t-0 border-border">
-        <div className="px-5 md:px-6 py-5 md:py-6">
+      {/* RIGHT: Asana-style task detail panel — white card, inline
+          edits without textarea/input chrome. */}
+      <aside className="md:w-[440px] md:shrink-0 md:h-full md:overflow-y-auto bg-card border-t md:border-t-0 border-border">
+        <div className="px-5 md:px-7 py-5 md:py-7">
           {/* Status + title */}
-          <div className="flex items-start gap-3 mb-3">
+          <div className="flex items-start gap-3 mb-2">
             <button
               type="button"
               onClick={toggleStatus}
@@ -206,19 +259,21 @@ export default function TaskDetailPane({ taskId }: Props) {
                 </svg>
               )}
             </button>
-            <input
+            <textarea
               value={titleDraft}
               onChange={(e) => setTitleDraft(e.target.value)}
               onBlur={commitTitle}
               onKeyDown={(e) => {
-                if (e.key === "Enter") {
+                if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
-                  (e.target as HTMLInputElement).blur();
+                  (e.target as HTMLTextAreaElement).blur();
                 }
               }}
-              className={`flex-1 font-semibold text-lg leading-snug bg-transparent outline-none focus:outline-none ${
+              rows={1}
+              className={`flex-1 font-semibold text-lg leading-snug bg-transparent outline-none focus:outline-none resize-none break-words ${
                 isDone ? "line-through text-text-muted" : "text-text"
               }`}
+              style={{ fieldSizing: "content" } as React.CSSProperties}
             />
           </div>
 
@@ -228,16 +283,10 @@ export default function TaskDetailPane({ taskId }: Props) {
             </p>
           )}
 
-          {/* Field rows */}
-          <dl className="space-y-3 mb-6">
+          {/* Field rows — Asana metadata block */}
+          <dl className="space-y-2.5 mb-7">
             <div className="flex items-center gap-3 text-sm">
-              <dt className="w-20 text-xs uppercase tracking-wider text-text-muted">
-                Status
-              </dt>
-              <dd className="text-text-soft">{isDone ? "Completed" : "Active"}</dd>
-            </div>
-            <div className="flex items-center gap-3 text-sm">
-              <dt className="w-20 text-xs uppercase tracking-wider text-text-muted">
+              <dt className="w-24 text-xs uppercase tracking-wider text-text-muted">
                 Due date
               </dt>
               <dd className="flex items-center gap-2">
@@ -245,7 +294,7 @@ export default function TaskDetailPane({ taskId }: Props) {
                   type="date"
                   value={dueDraft}
                   onChange={(e) => commitDueDate(e.target.value)}
-                  className="bg-transparent border border-border rounded px-2 py-0.5 text-sm text-text"
+                  className="bg-transparent rounded px-1 py-0.5 text-sm text-text hover:bg-bg focus:bg-bg focus:outline-none"
                 />
                 {task.due_date && (
                   <button
@@ -258,21 +307,107 @@ export default function TaskDetailPane({ taskId }: Props) {
                 )}
               </dd>
             </div>
+            <div className="flex items-center gap-3 text-sm">
+              <dt className="w-24 text-xs uppercase tracking-wider text-text-muted">
+                Status
+              </dt>
+              <dd className="text-text-soft">{isDone ? "Completed" : "Active"}</dd>
+            </div>
           </dl>
 
-          {/* Description */}
-          <div>
-            <h2 className="text-xs font-semibold uppercase tracking-wider text-text-muted mb-1.5">
+          {/* Description — borderless, types like prose */}
+          <div className="mb-7">
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-text-muted mb-1">
               Description
             </h2>
             <textarea
               value={descDraft}
               onChange={(e) => setDescDraft(e.target.value)}
               onBlur={commitDescription}
-              placeholder="What's the full context? Sam will refine this as you chat."
-              rows={6}
-              className="w-full resize-y rounded-xl border border-border bg-card px-3 py-2.5 text-sm text-text leading-relaxed placeholder:text-text-muted focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/15 transition-all"
+              placeholder="What's this task about? Sam will refine this as you chat."
+              rows={3}
+              className="w-full resize-none bg-transparent text-sm text-text leading-relaxed placeholder:text-text-muted focus:outline-none break-words py-1"
+              style={{ fieldSizing: "content" } as React.CSSProperties}
             />
+          </div>
+
+          {/* Subtasks */}
+          <div>
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-text-muted mb-1.5">
+              Subtasks
+            </h2>
+            <ul className="space-y-0.5">
+              {subtasks.map((sub) => {
+                const done = sub.status === "completed";
+                return (
+                  <li
+                    key={sub.id}
+                    className="group flex items-center gap-2.5 px-1 py-1.5 rounded hover:bg-bg"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => handleToggleSubtask(sub.id, sub.status)}
+                      aria-label={done ? "Mark as not done" : "Mark as done"}
+                      className={`shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center transition-all ${
+                        done
+                          ? "bg-success border-success text-white"
+                          : "border-text-muted/50 hover:border-primary"
+                      }`}
+                    >
+                      {done && (
+                        <svg
+                          width="10"
+                          height="10"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="3"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden="true"
+                        >
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                      )}
+                    </button>
+                    <span
+                      className={`flex-1 text-sm break-words ${done ? "line-through text-text-muted" : "text-text"}`}
+                    >
+                      {sub.title}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteSubtask(sub.id)}
+                      aria-label="Delete subtask"
+                      className="opacity-0 group-hover:opacity-100 transition-opacity text-xs text-text-muted hover:text-red-600 px-1"
+                    >
+                      &times;
+                    </button>
+                  </li>
+                );
+              })}
+              <li className="flex items-center gap-2.5 px-1 py-1.5">
+                <span
+                  className="shrink-0 w-4 h-4 rounded-full border-2 border-text-muted/30"
+                  aria-hidden="true"
+                />
+                <input
+                  value={newSubtask}
+                  onChange={(e) => setNewSubtask(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleAddSubtask();
+                    }
+                  }}
+                  onBlur={() => {
+                    if (newSubtask.trim()) handleAddSubtask();
+                  }}
+                  placeholder="Add subtask"
+                  className="flex-1 bg-transparent text-sm text-text placeholder:text-text-muted focus:outline-none"
+                />
+              </li>
+            </ul>
           </div>
         </div>
       </aside>
