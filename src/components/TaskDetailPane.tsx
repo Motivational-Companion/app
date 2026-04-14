@@ -1,12 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import TextConversation from "@/components/TextConversation";
 import { useAuth } from "@/lib/supabase/useAuth";
 import {
-  addSubtask,
-  deleteTask,
   getOrCreateTaskConversation,
   loadTaskDetail,
   updateTaskDescription,
@@ -30,7 +27,7 @@ function formatDateForInput(dateStr: string | null | undefined): string {
 export default function TaskDetailPane({ taskId }: Props) {
   const { user, supabase } = useAuth();
   const [task, setTask] = useState<TaskRow | null>(null);
-  const [subtasks, setSubtasks] = useState<TaskRow[]>([]);
+  const [parent, setParent] = useState<TaskRow | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
@@ -38,7 +35,6 @@ export default function TaskDetailPane({ taskId }: Props) {
   const [titleDraft, setTitleDraft] = useState("");
   const [descDraft, setDescDraft] = useState("");
   const [dueDraft, setDueDraft] = useState("");
-  const [newSubtask, setNewSubtask] = useState("");
   const loadedRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -54,7 +50,7 @@ export default function TaskDetailPane({ taskId }: Props) {
         return;
       }
       setTask(detail.task);
-      setSubtasks(detail.subtasks);
+      setParent(detail.parent);
       setTitleDraft(detail.task.title);
       setDescDraft(detail.task.description ?? "");
       setDueDraft(formatDateForInput(detail.task.due_date));
@@ -72,7 +68,6 @@ export default function TaskDetailPane({ taskId }: Props) {
     try {
       await updateTaskFields(supabase, task.id, { title: trimmed });
     } catch {
-      // revert
       setTask((prev) => (prev ? { ...prev, title: task.title } : prev));
       setTitleDraft(task.title);
     }
@@ -107,48 +102,16 @@ export default function TaskDetailPane({ taskId }: Props) {
     [supabase, task]
   );
 
-  const handleAddSubtask = useCallback(async () => {
-    if (!supabase || !user || !task) return;
-    const title = newSubtask.trim();
-    if (!title) return;
-    setNewSubtask("");
-    const row = await addSubtask(supabase, user.id, task.id, title);
-    if (row) setSubtasks((prev) => [...prev, row]);
-  }, [supabase, user, task, newSubtask]);
-
-  const handleToggleSubtask = useCallback(
-    async (subId: string, currentStatus: string) => {
-      if (!supabase) return;
-      const nextStatus = currentStatus === "completed" ? "active" : "completed";
-      setSubtasks((prev) =>
-        prev.map((s) => (s.id === subId ? { ...s, status: nextStatus as TaskRow["status"] } : s))
-      );
-      try {
-        await updateTaskStatus(supabase, subId, nextStatus);
-      } catch {
-        setSubtasks((prev) =>
-          prev.map((s) =>
-            s.id === subId ? { ...s, status: currentStatus as TaskRow["status"] } : s
-          )
-        );
-      }
-    },
-    [supabase]
-  );
-
-  const handleDeleteSubtask = useCallback(
-    async (subId: string) => {
-      if (!supabase) return;
-      const previous = subtasks;
-      setSubtasks((prev) => prev.filter((s) => s.id !== subId));
-      try {
-        await deleteTask(supabase, subId);
-      } catch {
-        setSubtasks(previous);
-      }
-    },
-    [supabase, subtasks]
-  );
+  const toggleStatus = useCallback(async () => {
+    if (!supabase || !task) return;
+    const next = task.status === "completed" ? "active" : "completed";
+    setTask((prev) => (prev ? { ...prev, status: next } : prev));
+    try {
+      await updateTaskStatus(supabase, task.id, next);
+    } catch {
+      setTask((prev) => (prev ? { ...prev, status: task.status } : prev));
+    }
+  }, [supabase, task]);
 
   const taskFocus = useMemo(() => {
     if (!task) return null;
@@ -157,12 +120,14 @@ export default function TaskDetailPane({ taskId }: Props) {
       title: task.title,
       description: task.description,
       dueDate: task.due_date,
-      subtasks: subtasks.map((s) => ({
-        title: s.title,
-        status: s.status,
-      })),
+      parent: parent
+        ? {
+            title: parent.title,
+            listType: parent.list_type,
+          }
+        : null,
     };
-  }, [task, subtasks]);
+  }, [task, parent]);
 
   const handleDescriptionUpdatedBySam = useCallback(
     (_taskId: string, description: string) => {
@@ -183,10 +148,7 @@ export default function TaskDetailPane({ taskId }: Props) {
   if (notFound || !task) {
     return (
       <div className="px-6 py-10 max-w-[780px] mx-auto">
-        <Link href="/chat" className="text-sm text-text-muted hover:text-text">
-          &larr; Home
-        </Link>
-        <h1 className="font-display text-2xl font-semibold text-text mt-4">
+        <h1 className="font-display text-2xl font-semibold text-text">
           Task not found
         </h1>
         <p className="text-sm text-text-muted mt-2">
@@ -199,192 +161,121 @@ export default function TaskDetailPane({ taskId }: Props) {
   const isDone = task.status === "completed";
 
   return (
-    <div className="h-full flex flex-col max-w-[780px] mx-auto w-full px-4 md:px-6 py-4 md:py-6">
-      <Link
-        href="/chat"
-        className="text-xs text-text-muted hover:text-text inline-flex items-center gap-1 mb-3"
-      >
-        <span aria-hidden="true">&larr;</span> Home
-      </Link>
-
-      {/* Title + status + due date */}
-      <div className="flex items-start gap-3 mb-4">
-        <button
-          type="button"
-          onClick={() =>
-            handleToggleSubtask(task.id, task.status)
-          }
-          aria-label={isDone ? "Mark as not done" : "Mark as done"}
-          className={`mt-1.5 shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${
-            isDone
-              ? "bg-success border-success text-white"
-              : "border-text-muted/50 hover:border-primary"
-          }`}
-        >
-          {isDone && (
-            <svg
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="3"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <polyline points="20 6 9 17 4 12" />
-            </svg>
-          )}
-        </button>
-
-        <input
-          value={titleDraft}
-          onChange={(e) => setTitleDraft(e.target.value)}
-          onBlur={commitTitle}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              (e.target as HTMLInputElement).blur();
-            }
-          }}
-          className={`flex-1 font-display text-2xl font-semibold bg-transparent outline-none focus:outline-none ${
-            isDone ? "line-through text-text-muted" : "text-text"
-          }`}
-        />
-      </div>
-
-      <div className="flex items-center gap-2 text-xs text-text-muted mb-5">
-        <span>Due</span>
-        <input
-          type="date"
-          value={dueDraft}
-          onChange={(e) => commitDueDate(e.target.value)}
-          className="bg-transparent border border-border rounded px-2 py-1 text-xs text-text"
-        />
-        {task.due_date && (
-          <button
-            type="button"
-            onClick={() => commitDueDate("")}
-            className="text-text-muted hover:text-text underline"
-          >
-            clear
-          </button>
-        )}
-      </div>
-
-      {/* Description */}
-      <section className="mb-5">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-text-muted mb-1.5">
-          Description
-        </h2>
-        <textarea
-          value={descDraft}
-          onChange={(e) => setDescDraft(e.target.value)}
-          onBlur={commitDescription}
-          placeholder="What's the full context? Sam will refine this as you chat."
-          rows={4}
-          className="w-full resize-y rounded-xl border border-border bg-bg px-3 py-2.5 text-sm text-text leading-relaxed placeholder:text-text-muted focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/15 transition-all"
-        />
-      </section>
-
-      {/* Subtasks */}
-      <section className="mb-5">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-text-muted mb-1.5">
-          Subtasks
-        </h2>
-        <ul className="space-y-1">
-          {subtasks.map((sub) => {
-            const done = sub.status === "completed";
-            return (
-              <li
-                key={sub.id}
-                className="group flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-bg"
-              >
-                <button
-                  type="button"
-                  onClick={() => handleToggleSubtask(sub.id, sub.status)}
-                  aria-label={done ? "Mark as not done" : "Mark as done"}
-                  className={`shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center transition-all ${
-                    done
-                      ? "bg-success border-success text-white"
-                      : "border-text-muted/50 hover:border-primary"
-                  }`}
-                >
-                  {done && (
-                    <svg
-                      width="10"
-                      height="10"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="3"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      aria-hidden="true"
-                    >
-                      <polyline points="20 6 9 17 4 12" />
-                    </svg>
-                  )}
-                </button>
-                <span
-                  className={`flex-1 text-sm ${done ? "line-through text-text-muted" : "text-text"}`}
-                >
-                  {sub.title}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => handleDeleteSubtask(sub.id)}
-                  aria-label="Delete subtask"
-                  className="opacity-0 group-hover:opacity-100 transition-opacity text-xs text-text-muted hover:text-red-600"
-                >
-                  &times;
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-        <div className="flex gap-2 mt-2">
-          <input
-            value={newSubtask}
-            onChange={(e) => setNewSubtask(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                handleAddSubtask();
-              }
-            }}
-            placeholder="Add subtask and press Enter"
-            className="flex-1 rounded-lg border border-border bg-bg px-3 py-1.5 text-sm text-text placeholder:text-text-muted focus:outline-none focus:border-primary transition-all"
+    <div className="h-full flex flex-col md:flex-row min-h-0">
+      {/* LEFT: chat */}
+      <section className="flex-1 min-w-0 min-h-0 flex flex-col bg-card md:border-r md:border-border">
+        {conversationId && (
+          <TextConversation
+            embedded
+            chatMode="chat"
+            conversationIdOverride={conversationId}
+            taskFocus={taskFocus}
+            onTaskDescriptionUpdated={handleDescriptionUpdatedBySam}
           />
-          <button
-            type="button"
-            onClick={handleAddSubtask}
-            disabled={!newSubtask.trim()}
-            className="h-8 px-3 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary-dark disabled:bg-border disabled:text-text-muted transition-colors"
-          >
-            Add
-          </button>
-        </div>
+        )}
       </section>
 
-      {/* Chat */}
-      <section className="flex-1 min-h-[320px] border-t border-border pt-3">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-text-muted mb-2 px-1">
-          Conversation
-        </h2>
-        <div className="h-full rounded-2xl border border-border bg-card overflow-hidden">
-          {conversationId && (
-            <TextConversation
-              embedded
-              chatMode="chat"
-              conversationIdOverride={conversationId}
-              taskFocus={taskFocus}
-              onTaskDescriptionUpdated={handleDescriptionUpdatedBySam}
+      {/* RIGHT: task detail panel — Asana style */}
+      <aside className="md:w-[380px] md:shrink-0 md:h-full md:overflow-y-auto bg-bg border-t md:border-t-0 border-border">
+        <div className="px-5 md:px-6 py-5 md:py-6">
+          {/* Status + title */}
+          <div className="flex items-start gap-3 mb-3">
+            <button
+              type="button"
+              onClick={toggleStatus}
+              aria-label={isDone ? "Mark as not done" : "Mark complete"}
+              className={`mt-1.5 shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${
+                isDone
+                  ? "bg-success border-success text-white"
+                  : "border-text-muted/50 hover:border-primary"
+              }`}
+            >
+              {isDone && (
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="3"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              )}
+            </button>
+            <input
+              value={titleDraft}
+              onChange={(e) => setTitleDraft(e.target.value)}
+              onBlur={commitTitle}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  (e.target as HTMLInputElement).blur();
+                }
+              }}
+              className={`flex-1 font-semibold text-lg leading-snug bg-transparent outline-none focus:outline-none ${
+                isDone ? "line-through text-text-muted" : "text-text"
+              }`}
             />
+          </div>
+
+          {parent && (
+            <p className="text-xs text-text-muted mb-5 ml-8">
+              Part of {parent.list_type}: <span className="text-text-soft">{parent.title}</span>
+            </p>
           )}
+
+          {/* Field rows */}
+          <dl className="space-y-3 mb-6">
+            <div className="flex items-center gap-3 text-sm">
+              <dt className="w-20 text-xs uppercase tracking-wider text-text-muted">
+                Status
+              </dt>
+              <dd className="text-text-soft">{isDone ? "Completed" : "Active"}</dd>
+            </div>
+            <div className="flex items-center gap-3 text-sm">
+              <dt className="w-20 text-xs uppercase tracking-wider text-text-muted">
+                Due date
+              </dt>
+              <dd className="flex items-center gap-2">
+                <input
+                  type="date"
+                  value={dueDraft}
+                  onChange={(e) => commitDueDate(e.target.value)}
+                  className="bg-transparent border border-border rounded px-2 py-0.5 text-sm text-text"
+                />
+                {task.due_date && (
+                  <button
+                    type="button"
+                    onClick={() => commitDueDate("")}
+                    className="text-xs text-text-muted hover:text-text underline"
+                  >
+                    clear
+                  </button>
+                )}
+              </dd>
+            </div>
+          </dl>
+
+          {/* Description */}
+          <div>
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-text-muted mb-1.5">
+              Description
+            </h2>
+            <textarea
+              value={descDraft}
+              onChange={(e) => setDescDraft(e.target.value)}
+              onBlur={commitDescription}
+              placeholder="What's the full context? Sam will refine this as you chat."
+              rows={6}
+              className="w-full resize-y rounded-xl border border-border bg-card px-3 py-2.5 text-sm text-text leading-relaxed placeholder:text-text-muted focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/15 transition-all"
+            />
+          </div>
         </div>
-      </section>
+      </aside>
     </div>
   );
 }

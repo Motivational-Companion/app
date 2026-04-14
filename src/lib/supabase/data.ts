@@ -282,6 +282,7 @@ export type TaskRow = {
 export type TaskDetail = {
   task: TaskRow;
   subtasks: TaskRow[];
+  parent: TaskRow | null;
 };
 
 export async function loadTaskDetail(
@@ -299,20 +300,32 @@ export async function loadTaskDetail(
     return null;
   }
 
-  const { data: subtasks, error: subError } = await supabase
+  const taskRow = task as TaskRow;
+
+  const subtasksPromise = supabase
     .from("tasks")
     .select("*")
     .eq("parent_task_id", taskId)
     .order("created_at");
 
-  if (subError) {
-    console.error("Failed to load subtasks:", subError);
-    return { task: task as TaskRow, subtasks: [] };
-  }
+  const parentPromise = taskRow.parent_task_id
+    ? supabase
+        .from("tasks")
+        .select("*")
+        .eq("id", taskRow.parent_task_id)
+        .single()
+    : Promise.resolve({ data: null, error: null });
+
+  const [{ data: subtasks, error: subError }, { data: parent, error: parentErr }] =
+    await Promise.all([subtasksPromise, parentPromise]);
+
+  if (subError) console.error("Failed to load subtasks:", subError);
+  if (parentErr) console.error("Failed to load parent task:", parentErr);
 
   return {
-    task: task as TaskRow,
+    task: taskRow,
     subtasks: (subtasks ?? []) as TaskRow[],
+    parent: (parent as TaskRow) ?? null,
   };
 }
 

@@ -8,6 +8,7 @@ import {
   buildReflectiveFirstMessage,
   SAM_CHECKIN_FIRST_MESSAGE,
   buildCheckinFirstMessage,
+  buildTaskFirstMessage,
 } from "@/lib/sam-prompt";
 import LiveLists, { type NoteItem } from "@/components/LiveLists";
 import { useAuth } from "@/lib/supabase/useAuth";
@@ -64,6 +65,7 @@ type Props = {
     description?: string | null;
     dueDate?: string | null;
     subtasks?: Array<{ title: string; status: string }>;
+    parent?: { title: string; listType: "issue" | "goal" | "task" } | null;
   } | null;
   /**
    * Called when Sam emits an update_task_description tool call so the
@@ -73,11 +75,17 @@ type Props = {
 };
 
 export default function TextConversation({ onBack, onboardingData, chatMode = "chat", onNoteAdded, onNoteUpdated, existingTasks, embedded = false, initialInput, onOpenVoice, conversationIdOverride, taskFocus, onTaskDescriptionUpdated }: Props) {
-  const firstMessage = chatMode === "checkin"
-    ? SAM_CHECKIN_FIRST_MESSAGE
-    : onboardingData
-      ? buildReflectiveFirstMessage(onboardingData)
-      : SAM_FIRST_MESSAGE;
+  const firstMessage = taskFocus
+    ? buildTaskFirstMessage({
+        title: taskFocus.title,
+        parent: taskFocus.parent ?? null,
+        description: taskFocus.description,
+      })
+    : chatMode === "checkin"
+      ? SAM_CHECKIN_FIRST_MESSAGE
+      : onboardingData
+        ? buildReflectiveFirstMessage(onboardingData)
+        : SAM_FIRST_MESSAGE;
   const [messages, setMessages] = useState<ChatMessage[]>([
     { role: "assistant", content: firstMessage },
   ]);

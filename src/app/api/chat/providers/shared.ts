@@ -25,6 +25,7 @@ export type TaskFocusPayload = {
   description?: string | null;
   dueDate?: string | null;
   subtasks?: Array<{ title: string; status: string }>;
+  parent?: { title: string; listType: "issue" | "goal" | "task" } | null;
 };
 
 export type ChatRequestBody = {
@@ -77,7 +78,10 @@ export function buildSystemPrompt(
     const desc = taskFocus.description
       ? `\n\nCurrent description:\n${taskFocus.description}`
       : "\n\n(No description yet.)";
-    systemPrompt += `\n\n## Current Task Focus\nYou are helping the user work on this specific task. Stay focused on it. Ask clarifying questions about scope, timeline, and approach. Break it into concrete subtasks if that helps the user move.\n\nTask: "${taskFocus.title}"${due}${desc}\n\nSubtasks:\n${subtasks}\n\nWhen the conversation reveals meaningful new detail (scope, timeline, approach, constraints), call the update_task_description tool with a refined description that captures the full context. This description is what the user (and you) will read when returning to this task later, so write it as durable context, not as a summary of this chat.`;
+    const parent = taskFocus.parent
+      ? `\nThis task rolls up to the ${taskFocus.parent.listType}: "${taskFocus.parent.title}".`
+      : "";
+    systemPrompt += `\n\n## Current Task Focus\nYou are helping the user work on this specific task. Stay focused on it. Ask clarifying questions about scope, timeline, and approach. Break it into concrete subtasks if that helps the user move.${parent}\n\nTask: "${taskFocus.title}"${due}${desc}\n\nSubtasks:\n${subtasks}\n\nWhen the conversation reveals meaningful new detail (scope, timeline, approach, constraints), call the update_task_description tool with a refined description that captures the full context. This description is what the user (and you) will read when returning to this task later, so write it as durable context, not as a summary of this chat.`;
   }
 
   return systemPrompt;

@@ -381,6 +381,28 @@ export const NOTE_TASK_TOOL = {
 };
 
 /**
+ * First message Sam says when a user opens a task's dedicated chat
+ * with no prior history. Context-aware: references the task title
+ * and (if present) the parent goal it rolls up to. Asks the user
+ * to bring Sam up to speed rather than starting from "Hey, I'm Sam."
+ */
+type TaskFirstMessageInput = {
+  title: string;
+  parent?: { title: string; listType: "issue" | "goal" | "task" } | null;
+  description?: string | null;
+};
+
+export function buildTaskFirstMessage(input: TaskFirstMessageInput): string {
+  const lead = input.parent
+    ? `So you're working on "${input.title}", which rolls up to your ${input.parent.listType} "${input.parent.title}".`
+    : `So you're working on "${input.title}".`;
+  const followUp = input.description
+    ? `What's the latest? Anything to add to the picture, or somewhere you'd like help moving forward?`
+    : `Tell me what's going on with this. What you've got so far, where you're stuck, or what kind of help you'd like.`;
+  return `${lead} ${followUp}`;
+}
+
+/**
  * Tool for refining a task's long-form description while in its
  * dedicated pane. Fires only in the task-focus chat surface (i.e.
  * when the request body carries taskFocus). Sam is instructed to
