@@ -66,11 +66,12 @@ export async function createConversation(
 }
 
 /**
- * Return the id of the user's current active conversation — shared across
- * text and voice modes so both surfaces append to the same thread. `mode`
- * is recorded on the row when it's created but is NOT used to partition
- * lookups. If the user has any open conversation, we reuse it. Otherwise
- * create a new one tagged with the mode that initiated it.
+ * Return the id of the user's GLOBAL brain-dump conversation — the row
+ * with task_id IS NULL. Task-scoped threads (task_id != NULL) are
+ * resolved separately via getOrCreateTaskConversation. Shared across
+ * text and voice modes so both surfaces append to the same global
+ * thread. Mode is recorded on creation but isn't used to partition
+ * lookups.
  */
 export async function getOrCreateActiveConversation(
   supabase: SupabaseClient,
@@ -81,6 +82,7 @@ export async function getOrCreateActiveConversation(
     .from("conversations")
     .select("id")
     .eq("user_id", userId)
+    .is("task_id", null)
     .is("ended_at", null)
     .order("started_at", { ascending: false })
     .limit(1);
