@@ -68,40 +68,13 @@ export default function AppDrawer({ onRequestClose, onCollapse }: Props) {
 
   return (
     <div className="h-full flex flex-col bg-card md:bg-bg">
-      {/* Sticky header: collapse toggle + primary destination */}
-      <div className="shrink-0 px-3 pt-2 pb-3 border-b border-border">
-        {onCollapse && (
-          <div className="flex items-center mb-2">
-            <button
-              type="button"
-              onClick={onCollapse}
-              aria-label="Collapse sidebar"
-              className="h-9 w-9 flex items-center justify-center text-text-soft hover:text-text rounded-lg hover:bg-card md:hover:bg-card transition-colors"
-            >
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <rect width="18" height="18" x="3" y="3" rx="2" />
-                <path d="M9 3v2" />
-                <path d="M9 9v1" />
-                <path d="M9 14v1" />
-                <path d="M9 19v2" />
-              </svg>
-            </button>
-          </div>
-        )}
+      {/* Sticky header: Talk with Sam + collapse toggle on one row,
+          flush at the top of the drawer. */}
+      <div className="shrink-0 px-3 pt-2 pb-3 border-b border-border flex items-center gap-2">
         <Link
           href="/chat"
           onClick={onRequestClose}
-          className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${
+          className={`flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
             pathname === "/chat"
               ? "border-primary/40 bg-primary/10 text-primary"
               : "border-border bg-card md:bg-card text-text hover:border-primary/40"
@@ -115,6 +88,32 @@ export default function AppDrawer({ onRequestClose, onCollapse }: Props) {
           </span>
           Talk with Sam
         </Link>
+        {onCollapse && (
+          <button
+            type="button"
+            onClick={onCollapse}
+            aria-label="Collapse sidebar"
+            className="ml-auto h-9 w-9 shrink-0 flex items-center justify-center text-text-soft hover:text-text rounded-lg hover:bg-card md:hover:bg-card transition-colors"
+          >
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <rect width="18" height="18" x="3" y="3" rx="2" />
+              <path d="M9 3v2" />
+              <path d="M9 9v1" />
+              <path d="M9 14v1" />
+              <path d="M9 19v2" />
+            </svg>
+          </button>
+        )}
       </div>
 
       {/* Scrollable middle — sections */}

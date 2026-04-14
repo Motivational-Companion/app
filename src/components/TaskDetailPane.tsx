@@ -388,9 +388,23 @@ export default function TaskDetailPane({ taskId }: Props) {
               })}
               <li className="flex items-center gap-2.5 px-1 py-1.5">
                 <span
-                  className="shrink-0 w-4 h-4 rounded-full border-2 border-text-muted/30"
+                  className="shrink-0 w-4 h-4 inline-flex items-center justify-center text-text-muted"
                   aria-hidden="true"
-                />
+                >
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                </span>
                 <input
                   value={newSubtask}
                   onChange={(e) => setNewSubtask(e.target.value)}
@@ -403,8 +417,8 @@ export default function TaskDetailPane({ taskId }: Props) {
                   onBlur={() => {
                     if (newSubtask.trim()) handleAddSubtask();
                   }}
-                  placeholder="Add subtask"
-                  className="flex-1 bg-transparent text-sm text-text placeholder:text-text-muted focus:outline-none"
+                  aria-label="Add subtask"
+                  className="flex-1 bg-transparent text-sm text-text focus:outline-none"
                 />
               </li>
             </ul>
