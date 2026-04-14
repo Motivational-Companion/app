@@ -263,6 +263,150 @@ export async function deleteTask(supabase: SupabaseClient, taskId: string) {
   }
 }
 
+// ── Task detail (description, due date, subtasks) ──
+
+export type TaskRow = {
+  id: string;
+  user_id: string;
+  list_type: "issue" | "goal" | "task";
+  title: string;
+  timeframe: string | null;
+  status: "active" | "completed" | "snoozed" | "dismissed";
+  description: string | null;
+  due_date: string | null;
+  parent_task_id: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TaskDetail = {
+  task: TaskRow;
+  subtasks: TaskRow[];
+};
+
+export async function loadTaskDetail(
+  supabase: SupabaseClient,
+  taskId: string
+): Promise<TaskDetail | null> {
+  const { data: task, error: taskError } = await supabase
+    .from("tasks")
+    .select("*")
+    .eq("id", taskId)
+    .single();
+
+  if (taskError || !task) {
+    console.error("Failed to load task:", taskError);
+    return null;
+  }
+
+  const { data: subtasks, error: subError } = await supabase
+    .from("tasks")
+    .select("*")
+    .eq("parent_task_id", taskId)
+    .order("created_at");
+
+  if (subError) {
+    console.error("Failed to load subtasks:", subError);
+    return { task: task as TaskRow, subtasks: [] };
+  }
+
+  return {
+    task: task as TaskRow,
+    subtasks: (subtasks ?? []) as TaskRow[],
+  };
+}
+
+export async function updateTaskDescription(
+  supabase: SupabaseClient,
+  taskId: string,
+  description: string
+) {
+  const { error } = await supabase
+    .from("tasks")
+    .update({ description })
+    .eq("id", taskId);
+  if (error) {
+    console.error("Failed to update task description:", error);
+    throw error;
+  }
+}
+
+export async function updateTaskDueDate(
+  supabase: SupabaseClient,
+  taskId: string,
+  dueDate: string | null
+) {
+  const { error } = await supabase
+    .from("tasks")
+    .update({ due_date: dueDate })
+    .eq("id", taskId);
+  if (error) {
+    console.error("Failed to update due date:", error);
+    throw error;
+  }
+}
+
+export async function addSubtask(
+  supabase: SupabaseClient,
+  userId: string,
+  parentTaskId: string,
+  title: string
+): Promise<TaskRow | null> {
+  const { data, error } = await supabase
+    .from("tasks")
+    .insert({
+      user_id: userId,
+      parent_task_id: parentTaskId,
+      list_type: "task",
+      title,
+    })
+    .select("*")
+    .single();
+  if (error) {
+    console.error("Failed to add subtask:", error);
+    return null;
+  }
+  return data as TaskRow;
+}
+
+// ── Per-task conversations ──
+
+export async function getOrCreateTaskConversation(
+  supabase: SupabaseClient,
+  userId: string,
+  taskId: string
+): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("conversations")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("task_id", taskId)
+    .is("ended_at", null)
+    .order("started_at", { ascending: false })
+    .limit(1);
+
+  if (error) {
+    console.error("Failed to look up task conversation:", error);
+    return null;
+  }
+
+  if (data && data.length > 0) {
+    return data[0].id;
+  }
+
+  const { data: created, error: createErr } = await supabase
+    .from("conversations")
+    .insert({ user_id: userId, mode: "text", task_id: taskId })
+    .select("id")
+    .single();
+
+  if (createErr) {
+    console.error("Failed to create task conversation:", createErr);
+    return null;
+  }
+  return created.id;
+}
+
 // ── Action Plans ──
 
 export async function saveActionPlan(
