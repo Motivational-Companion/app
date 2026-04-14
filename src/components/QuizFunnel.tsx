@@ -54,7 +54,6 @@ export default function QuizFunnel({ onCheckout, onBack }: Props) {
 
   const progress = progressMap[screen] ?? 0;
 
-  // Track quiz started on mount
   useEffect(() => {
     trackEvent("quiz_started");
     trackMetaEvent("ViewContent", { content_name: "quiz_funnel" });
@@ -69,7 +68,6 @@ export default function QuizFunnel({ onCheckout, onBack }: Props) {
         setScreen(next);
         setTransitioning(false);
         trackEvent("quiz_screen", { screen: next });
-        // Track quiz completion when reaching paywall (screen 11)
         if (next === 11) {
           trackEvent("quiz_completed");
           trackMetaEvent("Lead", { content_name: "quiz_completed" });
@@ -118,15 +116,15 @@ export default function QuizFunnel({ onCheckout, onBack }: Props) {
   };
 
   // Reflective text for Screen 2 based on Screen 1 selection
-  const reflectionBubbles: Record<string, React.ReactNode> = {
+  const reflectionBubbles: Record<string, string> = {
     overwhelmed:
-      <>I hear you. <strong>Feeling overwhelmed</strong> usually means you <strong>care about a lot of things</strong> and they{"\u2019"}re all competing for attention. Let{"\u2019"}s untangle that.</>,
+      "Feeling overwhelmed usually means you care about a lot of things and they\u2019re all competing for attention. Let\u2019s untangle that.",
     stuck:
-      <>I hear you. <strong>Feeling stuck</strong> usually means there{"\u2019"}s <strong>something real in the way</strong>. Let{"\u2019"}s figure out what it is.</>,
+      "Feeling stuck usually means there\u2019s something real in the way. Let\u2019s figure out what it is.",
     clarity:
-      <>I hear you. <strong>Needing clarity</strong> is actually a great sign. It means you{"\u2019"}re <strong>ready to focus</strong>. Let{"\u2019"}s figure out where.</>,
+      "Needing clarity is actually a great sign. It means you\u2019re ready to focus. Let\u2019s figure out where.",
     accountable:
-      <>I hear you. <strong>Wanting accountability</strong> means you already <strong>know what matters</strong>. You just need someone in your corner.</>,
+      "Wanting accountability means you already know what matters. You just need someone in your corner.",
   };
 
   // ─── Screen 0: Sam Welcome ────────────────────────────────────────────
@@ -134,43 +132,37 @@ export default function QuizFunnel({ onCheckout, onBack }: Props) {
     return (
       <ScreenShell transitioning={transitioning} direction={direction}>
         <ProgressBar progress={progress} />
-        <TopRow onBack={onBack} />
-
-        {/* Coach row — larger avatar with subtitle */}
-        <div className="flex items-center gap-2.5 mb-3">
-          <div className="w-[34px] h-[34px] rounded-full bg-gradient-to-br from-accent to-primary flex items-center justify-center shrink-0">
-            <span className="text-white font-semibold text-[13px]">S</span>
+        {onBack && <TopRow onBack={onBack} />}
+        <div className="flex flex-col items-center text-center mt-4">
+          <div className="w-20 h-20 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center mb-5">
+            <span className="text-white font-display text-3xl">S</span>
           </div>
-          <div>
-            <h3 className="text-sm font-semibold text-text">Sam</h3>
-            <p className="text-xs text-text-muted">Your coaching companion</p>
+
+          <SamBubble
+            text={
+              <>
+                Hey! I&apos;m Sam. {"\uD83D\uDC4B"} I&apos;m here to help you
+                figure out what you already know you need to do. Think of this as
+                a 5-minute conversation with a really good listener. Everything
+                stays between us.
+              </>
+            }
+          />
+
+          <div className="w-full space-y-3 mt-8">
+            <button
+              onClick={() => goTo(1)}
+              className="w-full h-14 bg-primary text-white rounded-xl text-base font-semibold hover:bg-primary-dark active:scale-[0.98] transition-all"
+            >
+              I&apos;m ready, let&apos;s go
+            </button>
+            <button
+              onClick={() => goTo(1)}
+              className="w-full h-12 border border-border rounded-xl text-sm text-primary font-medium hover:bg-border/30 transition-all"
+            >
+              Tell me more first
+            </button>
           </div>
-        </div>
-
-        <div className="bg-card border border-border rounded-2xl rounded-tl-sm px-4 py-3 text-sm text-text leading-relaxed shadow-sm">
-          Hey! I&apos;m <strong>Sam</strong>. {"\uD83D\uDC4B"} I&apos;m here to
-          help you figure out what <em>you</em> already know you need to do.
-          <br />
-          <br />
-          <strong>Think of this as a 5-minute conversation</strong> with a really
-          good listener. Everything stays between us.
-        </div>
-
-        <div className="flex-1" />
-
-        <div className="w-full space-y-2 mt-8">
-          <button
-            onClick={() => goTo(1)}
-            className="w-full h-14 bg-primary text-white rounded-xl text-base font-semibold hover:bg-primary-dark active:scale-[0.98] transition-all"
-          >
-            I&apos;m ready, let&apos;s go
-          </button>
-          <button
-            onClick={() => goTo(1)}
-            className="w-full h-12 border border-border rounded-xl text-sm text-primary font-medium hover:bg-border/30 transition-all"
-          >
-            Tell me more first
-          </button>
         </div>
       </ScreenShell>
     );
@@ -182,10 +174,13 @@ export default function QuizFunnel({ onCheckout, onBack }: Props) {
       <ScreenShell transitioning={transitioning} direction={direction}>
         <ProgressBar progress={progress} />
         <TopRow onBack={() => goTo(0)} onSkip={() => goTo(2)} />
-        <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-primary-light">Let&apos;s start simple</p>
-        <h2 className="font-display text-xl font-medium text-text mt-1.5 mb-3">
-          What brings you here?
+        <SamBubble text="Let's start simple." />
+        <h2 className="font-display text-xl font-medium text-text mt-3 mb-1">
+          What brings you here today?
         </h2>
+        <p className="text-sm text-text-muted mb-4">
+          Pick the one that fits best.
+        </p>
         <div className="space-y-3">
           <OptionCard
             icon={"\uD83C\uDF0A"}
@@ -238,16 +233,15 @@ export default function QuizFunnel({ onCheckout, onBack }: Props) {
         <p className="text-xs text-text-muted mb-3">Select all that apply.</p>
         <div className="space-y-2">
           {[
-            ["\uD83D\uDCBC", "Work or career stress"],
-            ["\uD83D\uDC96", "Relationships or family"],
-            ["\uD83D\uDCAA", "Health, fitness, or energy"],
-            ["\uD83C\uDF31", "A personal project or goal"],
-            ["\uD83D\uDCB0", "Finances or money worries"],
-            ["\uD83E\uDDE0", "General overwhelm \u2014 all of it"],
-          ].map(([icon, item]) => (
+            "Work/career stress",
+            "Relationships/family",
+            "Health/fitness/energy",
+            "Personal project/goal",
+            "Finances/money worries",
+            "General overwhelm \u2014 all of it",
+          ].map((item) => (
             <CompactOption
               key={item}
-              icon={icon}
               label={item}
               selected={data.lookLike.includes(item)}
               onClick={() => toggleMulti("lookLike", item)}
@@ -276,16 +270,15 @@ export default function QuizFunnel({ onCheckout, onBack }: Props) {
         <p className="text-sm text-text-muted mb-4">Most people pick 2-3.</p>
         <div className="space-y-2">
           {[
-            ["\u23F0", "Not enough time"],
-            ["\uD83D\uDCAB", "Low energy or motivation"],
-            ["\uD83E\uDDE0", "Overthinking everything"],
-            ["\uD83D\uDC65", "Other people\u2019s needs come first"],
-            ["\uD83D\uDE36", "Fear of failure or judgment"],
-            ["\uD83C\uDF00", "I don\u2019t know where to start"],
-          ].map(([icon, item]) => (
+            "Not enough time",
+            "Low energy/motivation",
+            "Overthinking everything",
+            "Other people\u2019s needs come first",
+            "Fear of failure/judgment",
+            "I don\u2019t know where to start",
+          ].map((item) => (
             <CompactOption
               key={item}
-              icon={icon}
               label={item}
               selected={data.obstacles.includes(item)}
               onClick={() => toggleMulti("obstacles", item)}
@@ -308,18 +301,18 @@ export default function QuizFunnel({ onCheckout, onBack }: Props) {
       <ScreenShell transitioning={transitioning} direction={direction}>
         <ProgressBar progress={progress} />
         <TopRow onBack={() => goTo(3)} onSkip={() => goTo(5)} />
-        <SamBubble text={<>That makes sense. <strong>You&apos;re not broken</strong> &mdash; you just don&apos;t have a system that works <em>with</em> your brain.</>} />
+        <SamBubble text="That makes sense. You're not broken \u2014 you just don't have a system that works with your brain." />
         <h3 className="font-semibold text-sm text-text mt-3 mb-1">
           What have you tried before?
         </h3>
         <p className="text-xs text-text-muted mb-3">Select any that apply.</p>
         <div className="space-y-2">
           {[
-            ["\uD83D\uDCDD", "To-do lists or planners"],
+            ["\uD83D\uDCDD", "To-do lists/planners"],
             ["\uD83D\uDCF1", "Habit tracker apps"],
             ["\uD83D\uDCD6", "Journaling"],
-            ["\uD83D\uDDE3\uFE0F", "Therapy or coaching"],
-            ["\uD83C\uDFA5", "YouTube / podcasts / books"],
+            ["\uD83D\uDDE3\uFE0F", "Therapy/coaching"],
+            ["\uD83C\uDFA7", "YouTube/podcasts/books"],
             ["\uD83E\uDD37", "Nothing yet \u2014 this is my first try"],
           ].map(([icon, label]) => (
             <CompactOption
@@ -346,14 +339,7 @@ export default function QuizFunnel({ onCheckout, onBack }: Props) {
     return (
       <ScreenShell transitioning={transitioning} direction={direction}>
         <ProgressBar progress={progress} />
-        <TopRow
-          onBack={() => goTo(4)}
-          onSkip={() => {
-            setData((prev) => ({ ...prev, vision: "" }));
-            goTo(6);
-          }}
-          skipLabel="Skip for now"
-        />
+        <TopRow onBack={() => goTo(4)} onSkip={() => goTo(6)} />
         <div className="text-center mb-4">
           <div className="text-4xl mb-3">&#10024;</div>
           <h2 className="font-display text-xl font-medium text-text">
@@ -374,18 +360,26 @@ export default function QuizFunnel({ onCheckout, onBack }: Props) {
             setData((prev) => ({ ...prev, vision: e.target.value }))
           }
           placeholder="What are your mornings like? What have you accomplished? How do you feel?"
-          className="w-full h-[90px] p-3.5 bg-card border border-border rounded-xl text-sm text-text resize-none focus:outline-none focus:border-primary-light transition-colors"
+          className="w-full h-28 p-4 bg-card border border-border rounded-xl text-sm text-text resize-none focus:outline-none focus:border-primary transition-colors"
         />
-        <p className="text-xs text-text-muted text-center mt-1.5">
+        <p className="text-xs text-text-muted text-center mt-2">
           This shapes your entire coaching plan &mdash; even a sentence helps.
         </p>
-        <div className="flex-1" />
         <button
           onClick={() => goTo(6)}
           disabled={data.vision.trim().length < 1}
           className="w-full h-14 bg-primary text-white rounded-xl text-base font-semibold hover:bg-primary-dark active:scale-[0.98] transition-all mt-6 disabled:bg-border disabled:text-text-muted disabled:cursor-default disabled:transform-none"
         >
           Continue
+        </button>
+        <button
+          onClick={() => {
+            setData((prev) => ({ ...prev, vision: "" }));
+            goTo(6);
+          }}
+          className="w-full text-center text-sm text-text-muted hover:text-text-soft transition-colors mt-3"
+        >
+          Skip for now
         </button>
       </ScreenShell>
     );
@@ -442,7 +436,6 @@ export default function QuizFunnel({ onCheckout, onBack }: Props) {
       <ScreenShell transitioning={transitioning} direction={direction}>
         <ProgressBar progress={progress} />
         <TopRow onBack={() => goTo(6)} onSkip={() => goTo(8)} />
-        <p className="text-xs font-semibold uppercase tracking-widest text-primary-light mb-2">Quick preferences</p>
         <h2 className="font-display text-xl font-medium text-text mb-1">
           When do you need me most?
         </h2>
@@ -483,7 +476,6 @@ export default function QuizFunnel({ onCheckout, onBack }: Props) {
       <ScreenShell transitioning={transitioning} direction={direction}>
         <ProgressBar progress={progress} />
         <TopRow onBack={() => goTo(7)} onSkip={() => goTo(9)} />
-        <p className="text-xs font-semibold uppercase tracking-widest text-primary-light mb-2">Almost there</p>
         <h2 className="font-display text-xl font-medium text-text mb-1">
           Which area should we
           <br />
@@ -532,7 +524,6 @@ export default function QuizFunnel({ onCheckout, onBack }: Props) {
       <ScreenShell transitioning={transitioning} direction={direction}>
         <ProgressBar progress={progress} />
         <TopRow onBack={() => goTo(8)} onSkip={() => goTo(10)} />
-        <p className="text-xs font-semibold uppercase tracking-widest text-primary-light mb-2">Last one</p>
         <h2 className="font-display text-xl font-medium text-text mb-4">
           What kind of support
           <br />
@@ -571,8 +562,8 @@ export default function QuizFunnel({ onCheckout, onBack }: Props) {
       <ScreenShell transitioning={transitioning} direction={direction}>
         <ProgressBar progress={progress} />
         <div className="text-center mb-4">
-          <div className="w-11 h-11 rounded-full bg-success flex items-center justify-center mx-auto mb-3">
-            <span className="text-white text-2xl font-bold">&#10003;</span>
+          <div className="w-14 h-14 rounded-full bg-success/10 flex items-center justify-center mx-auto mb-3">
+            <span className="text-success text-2xl font-bold">&#10003;</span>
           </div>
           <p className="text-xs font-semibold uppercase tracking-widest text-primary-light mb-1">
             Your personalized plan
@@ -585,7 +576,6 @@ export default function QuizFunnel({ onCheckout, onBack }: Props) {
           </p>
         </div>
 
-        {/* Vision card */}
         <div className="bg-gradient-to-br from-primary/[0.08] to-accent/[0.12] rounded-2xl p-4 mb-3">
           <p className="text-xs font-semibold text-primary mb-1">
             &#127919; YOUR VISION
@@ -597,26 +587,24 @@ export default function QuizFunnel({ onCheckout, onBack }: Props) {
           </p>
         </div>
 
-        {/* Plan steps */}
         <div className="space-y-3 mb-3">
           <PlanCard
             num="1"
             title="Daily Brain Dump & Triage"
-            desc={<>Tell me what&apos;s on your mind each morning. I&apos;ll sort it into <strong>3 clear actions</strong> &mdash; ranked by what moves the needle.</>}
+            desc="Tell me what's on your mind each morning. I'll sort it into 3 clear actions."
           />
           <PlanCard
             num="2"
             title="Weekly Priority Reset"
-            desc={<>Every Sunday: what you accomplished, what fell off, what&apos;s next. <strong>5 minutes.</strong></>}
+            desc="Every Sunday: what you accomplished, what fell off, what's next. 5 minutes."
           />
           <PlanCard
             num="3"
             title="Pattern Recognition"
-            desc={<>I track what you tell me and surface <strong>what&apos;s actually working</strong> vs. what&apos;s not.</>}
+            desc="I track what you tell me and surface what's actually working vs. what's not."
           />
         </div>
 
-        {/* First action */}
         <div className="bg-card border border-border rounded-xl p-3 mb-6">
           <p className="text-xs font-semibold text-success mb-1">
             &#9889; YOUR FIRST ACTION
@@ -655,7 +643,6 @@ export default function QuizFunnel({ onCheckout, onBack }: Props) {
           </p>
         </div>
 
-        {/* Annual */}
         <button
           onClick={() =>
             setData((prev) => ({ ...prev, selectedPlan: "annual" }))
@@ -666,9 +653,11 @@ export default function QuizFunnel({ onCheckout, onBack }: Props) {
               : "border-border bg-card"
           }`}
         >
-          <span className="inline-block text-xs font-bold text-white bg-primary rounded-full px-3 py-0.5 mb-2">
-            Best Value
-          </span>
+          {data.selectedPlan === "annual" && (
+            <span className="inline-block text-xs font-bold text-white bg-primary rounded-full px-3 py-0.5 mb-2">
+              Best Value
+            </span>
+          )}
           <div className="flex justify-between items-center">
             <div>
               <p className="text-xl font-bold text-text">
@@ -687,7 +676,6 @@ export default function QuizFunnel({ onCheckout, onBack }: Props) {
           </div>
         </button>
 
-        {/* Monthly */}
         <button
           onClick={() =>
             setData((prev) => ({ ...prev, selectedPlan: "monthly" }))
@@ -711,12 +699,11 @@ export default function QuizFunnel({ onCheckout, onBack }: Props) {
           </div>
         </button>
 
-        {/* Features */}
         <div className="space-y-3 mb-6">
           {[
-            ["Unlimited conversations", "talk through anything with Sam"],
+            ["Unlimited brain dumps", "talk through anything"],
             ["Daily coaching check-ins", "tied to your priorities"],
-            ["Goal and task tracking", "see your progress over time"],
+            ["Weekly progress insights", "patterns & next steps"],
             ["Your personalized plan", "built from what you shared"],
           ].map(([title, sub]) => (
             <div key={title} className="flex items-start gap-3">
@@ -738,7 +725,6 @@ export default function QuizFunnel({ onCheckout, onBack }: Props) {
           No charge for 7 days. Cancel in settings anytime.
         </p>
 
-        {/* Trust row */}
         <div className="flex justify-center gap-4 mt-4">
           {[
             "\uD83D\uDD12 Secure",
@@ -749,15 +735,6 @@ export default function QuizFunnel({ onCheckout, onBack }: Props) {
               {item}
             </span>
           ))}
-        </div>
-
-        <div className="flex justify-center gap-4 mt-4">
-          <a href="/privacy" className="text-[11px] text-text-muted hover:text-text-soft transition-colors">
-            Privacy Policy
-          </a>
-          <a href="/terms" className="text-[11px] text-text-muted hover:text-text-soft transition-colors">
-            Terms of Service
-          </a>
         </div>
       </ScreenShell>
     );
@@ -778,11 +755,7 @@ function ScreenShell({
   children: React.ReactNode;
 }) {
   return (
-    <div
-      className="min-h-[100dvh] bg-bg flex justify-center items-start md:items-center md:py-12 md:px-4"
-      data-quiz-shell
-      data-transitioning={transitioning ? "true" : "false"}
-    >
+    <div className="min-h-[100dvh] bg-bg flex justify-center items-start md:items-center md:py-12 md:px-4">
       <div
         className={`w-full max-w-[480px] flex flex-col px-6 pb-8 pt-4 md:rounded-3xl md:shadow-xl md:border md:border-border transition-all duration-300 ${
           transitioning
@@ -812,11 +785,9 @@ function ProgressBar({ progress }: { progress: number }) {
 function TopRow({
   onBack,
   onSkip,
-  skipLabel = "Skip",
 }: {
   onBack?: () => void;
   onSkip?: () => void;
-  skipLabel?: string;
 }) {
   return (
     <div className="flex items-center justify-between mb-3 min-h-[28px]">
@@ -830,9 +801,9 @@ function TopRow({
       {onSkip && (
         <button
           onClick={onSkip}
-          className="text-text-muted text-[13px] hover:text-text-soft transition-colors"
+          className="text-text-muted text-sm hover:text-text-soft transition-colors"
         >
-          {skipLabel}
+          Skip
         </button>
       )}
     </div>
@@ -843,8 +814,8 @@ function SamBubble({ text }: { text: React.ReactNode }) {
   return (
     <>
       <div className="flex items-center gap-2 mb-2">
-        <div className="w-7 h-7 rounded-full bg-gradient-to-br from-accent to-primary flex items-center justify-center">
-          <span className="text-white text-xs font-semibold">S</span>
+        <div className="w-7 h-7 rounded-full bg-accent-soft flex items-center justify-center">
+          <span className="text-primary-dark text-xs font-semibold">S</span>
         </div>
         <span className="text-xs text-text-soft font-medium">Sam</span>
       </div>
@@ -919,12 +890,12 @@ function PlanCard({
 }: {
   num: string;
   title: string;
-  desc: React.ReactNode;
+  desc: string;
 }) {
   return (
     <div className="flex gap-3 items-start bg-card border border-border rounded-xl p-3">
-      <div className="w-7 h-7 rounded-full bg-primary flex items-center justify-center shrink-0">
-        <span className="text-white text-xs font-bold">{num}</span>
+      <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+        <span className="text-primary text-xs font-bold">{num}</span>
       </div>
       <div>
         <p className="text-sm font-semibold text-text">{title}</p>

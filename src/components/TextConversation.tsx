@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import { useConversation } from "@elevenlabs/react";
 import type { ChatMessage, OnboardingData } from "@/lib/types";
 import {
   SAM_FIRST_MESSAGE,
@@ -14,6 +15,7 @@ import {
   getOrCreateActiveConversation,
   saveMessage,
   loadActiveTasks,
+  loadMessages,
 } from "@/lib/supabase/data";
 import { trackEvent } from "@/lib/analytics";
 
@@ -22,6 +24,7 @@ type Props = {
   onboardingData?: OnboardingData | null;
   chatMode?: "chat" | "checkin";
   onNoteAdded?: (listKey: "issues" | "goals" | "tasks", item: NoteItem) => void;
+  onNoteUpdated?: (listKey: "issues" | "goals" | "tasks", item: NoteItem) => void;
   existingTasks?: string;
   /**
    * When true, the chat is rendered inside a parent card (e.g.
@@ -37,9 +40,17 @@ type Props = {
    * initial mount; subsequent typing is preserved.
    */
   initialInput?: string;
+  /**
+   * If provided, renders a microphone button in the header that opens
+   * the voice conversation overlay.
+   */
+  onOpenVoice?: () => void;
+  /**
+   * If provided, renders a small Sign out link in the header.
+   */
 };
 
-export default function TextConversation({ onBack, onboardingData, chatMode = "chat", onNoteAdded, existingTasks, embedded = false, initialInput }: Props) {
+export default function TextConversation({ onBack, onboardingData, chatMode = "chat", onNoteAdded, onNoteUpdated, existingTasks, embedded = false, initialInput, onOpenVoice }: Props) {
   const firstMessage = chatMode === "checkin"
     ? SAM_CHECKIN_FIRST_MESSAGE
     : onboardingData
@@ -52,6 +63,22 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [taskContext, setTaskContext] = useState<string | null>(null);
+
+  // Inline voice state. The mic button in the input row starts an
+  // ElevenLabs session; while it's active the input area becomes a
+  // waveform with a mic-settings gear on the left and a stop button
+  // on the right. No full-screen overlay.
+  const [voiceActive, setVoiceActive] = useState(false);
+  const [mics, setMics] = useState<MediaDeviceInfo[]>([]);
+  const [selectedMic, setSelectedMic] = useState<string>("");
+  const [micMenuOpen, setMicMenuOpen] = useState(false);
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+  const voiceConvoIdRef = useRef<string | null>(null);
+  // 0–1 amplitude derived from Sam's outgoing PCM audio. Drives the
+  // waveform only while she's speaking (per user request — the mic
+  // amplitude is not visualized).
+  const [agentVolume, setAgentVolume] = useState(0);
+  const agentDecayRef = useRef<number | null>(null);
 
   // Live lists
   const [issues, setIssues] = useState<NoteItem[]>([]);
@@ -79,17 +106,26 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
   const { user, supabase } = useAuth();
   const conversationIdRef = useRef<string | null>(null);
 
-  // Reuse the user's single active conversation when authenticated.
-  // We intentionally exclude `firstMessage` from the dep array — it's only
-  // used inside the one-time greeting save and referencing it would cause
-  // the effect to re-run on every render that recomputes the greeting.
+  // Reuse the user's single active conversation when authenticated, then
+  // hydrate the message list from history so returning users see the full
+  // thread (including anything said via the voice surface, since voice +
+  // text share one conversation row). If history is empty, keep the
+  // synthesized greeting already in state.
   useEffect(() => {
     if (!user || !supabase || conversationIdRef.current) return;
     let cancelled = false;
-    getOrCreateActiveConversation(supabase, user.id, "text").then((id) => {
+    (async () => {
+      const id = await getOrCreateActiveConversation(supabase, user.id, "text");
       if (cancelled || !id) return;
       conversationIdRef.current = id;
-    });
+      const history = await loadMessages(supabase, id);
+      if (cancelled || history.length === 0) return;
+      // User has prior messages — show them instead of the cold greeting.
+      // Mark userHasSent so the check-in greeting upgrade effect doesn't
+      // overwrite history.
+      userHasSentRef.current = true;
+      setMessages(history);
+    })();
     return () => {
       cancelled = true;
     };
@@ -168,11 +204,17 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
   }, [isStreaming]);
 
   const handleNote = useCallback(
-    (tool: string, data: { title: string; timeframe?: string }) => {
+    (tool: string, data: { title: string; timeframe?: string; id?: string }) => {
       const normalize = (s: string) => s.toLowerCase().trim().replace(/\b(a|an|the|my|your|get|to)\b/g, "").replace(/\s+/g, " ").trim();
-      const isDuplicate = (prev: NoteItem[]) => {
+      const findMatchIndex = (prev: NoteItem[]): number => {
+        // Explicit id from Sam wins — it's an intentional update.
+        if (data.id) {
+          const byId = prev.findIndex((item) => item.id === data.id);
+          if (byId !== -1) return byId;
+        }
         const incoming = normalize(data.title);
-        return prev.some((item) => {
+        if (!incoming) return -1;
+        return prev.findIndex((item) => {
           const existing = normalize(item.text);
           return existing === incoming || existing.includes(incoming) || incoming.includes(existing);
         });
@@ -180,9 +222,29 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
 
       const setter =
         tool === "note_issue" ? setIssues : tool === "note_goal" ? setGoals : setTasks;
+      const listKey = tool === "note_issue" ? "issues" as const : tool === "note_goal" ? "goals" as const : "tasks" as const;
+      const category = tool === "note_issue" ? "issue" as const : tool === "note_goal" ? "goal" as const : "task" as const;
 
       setter((prev) => {
-        if (isDuplicate(prev)) return prev;
+        const matchIndex = findMatchIndex(prev);
+
+        // Update path: Sam is refining an existing item. Replace the
+        // matched row with the newer title/timeframe so users see the
+        // refinement rather than a duplicate.
+        if (matchIndex !== -1) {
+          const existing = prev[matchIndex];
+          const updated: NoteItem = {
+            ...existing,
+            text: data.title,
+            timeframe: data.timeframe ?? existing.timeframe,
+          };
+          const next = [...prev];
+          next[matchIndex] = updated;
+          if (onNoteUpdated) onNoteUpdated(listKey, updated);
+          return next;
+        }
+
+        // Insert path.
         const item: NoteItem = {
           id: crypto.randomUUID(),
           text: data.title,
@@ -191,9 +253,6 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
         };
         setLastAdded(item.id);
         trackEvent("task_extracted", { category: tool, title: data.title });
-
-        // Show inline card in chat
-        const category = tool === "note_issue" ? "issue" as const : tool === "note_goal" ? "goal" as const : "task" as const;
         setNoteCards((cards) => [...cards, {
           id: item.id,
           category,
@@ -201,16 +260,146 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
           timeframe: data.timeframe,
           afterMessageIndex: messages.length - 1,
         }]);
-
-        // Notify parent (board persistence)
-        const listKey = tool === "note_issue" ? "issues" as const : tool === "note_goal" ? "goals" as const : "tasks" as const;
         if (onNoteAdded) onNoteAdded(listKey, item);
-
         return [...prev, item];
       });
     },
-    [onNoteAdded]
+    [onNoteAdded, onNoteUpdated, messages.length]
   );
+
+  // ── Inline voice session (ElevenLabs) ──
+  // Shares the same conversation row as text via voiceConvoIdRef so
+  // onMessage turns land in the persistent thread.
+  const voice = useConversation({
+    clientTools: {
+      note_issue: async (params: { title: string }) => {
+        handleNote("note_issue", { title: params.title });
+        return "Noted.";
+      },
+      note_goal: async (params: { title: string }) => {
+        handleNote("note_goal", { title: params.title });
+        return "Noted.";
+      },
+      note_task: async (params: { title: string; timeframe?: string }) => {
+        handleNote("note_task", { title: params.title, timeframe: params.timeframe });
+        return "Noted.";
+      },
+    },
+    onConnect: () => setVoiceError(null),
+    onDisconnect: (details) => {
+      setVoiceActive(false);
+      // Surface unexpected disconnect reasons so failures don't silently
+      // collapse the voice UI back to the text input.
+      if (details && details.reason === "error") {
+        setVoiceError(details.message || "Voice disconnected unexpectedly.");
+      }
+    },
+    onError: (message: string) => setVoiceError(message),
+    onMessage: (payload) => {
+      const role: "user" | "assistant" = payload.source === "user" ? "user" : "assistant";
+      // Show the voice turn in the chat transcript so the user can see
+      // what they said and what Sam said, alongside text turns.
+      setMessages((prev) => [...prev, { role, content: payload.message }]);
+      // Persist to the shared conversation thread.
+      if (supabase && voiceConvoIdRef.current) {
+        saveMessage(supabase, voiceConvoIdRef.current, role, payload.message);
+      }
+    },
+    onAudio: (base64Audio: string) => {
+      // Compute a rough amplitude (RMS) from Sam's PCM16 audio chunks
+      // so the waveform responds to her actual voice. Falls back to 0
+      // on decode failure — bars just stay idle instead of crashing.
+      try {
+        const bin = atob(base64Audio);
+        const samples = bin.length >> 1;
+        if (samples === 0) return;
+        let sumSquares = 0;
+        for (let i = 0; i < samples; i++) {
+          const lo = bin.charCodeAt(i * 2);
+          const hi = bin.charCodeAt(i * 2 + 1);
+          let s = (hi << 8) | lo;
+          if (s & 0x8000) s -= 0x10000;
+          sumSquares += s * s;
+        }
+        const rms = Math.sqrt(sumSquares / samples) / 32768;
+        setAgentVolume(Math.min(1, rms * 3));
+        // Decay: if no new audio arrives in 120ms, reset to 0 so bars
+        // return to their idle state between her pauses.
+        if (agentDecayRef.current) window.clearTimeout(agentDecayRef.current);
+        agentDecayRef.current = window.setTimeout(() => setAgentVolume(0), 120);
+      } catch {
+        // ignore decode errors
+      }
+    },
+  });
+
+  const startVoice = useCallback(async () => {
+    setVoiceError(null);
+    try {
+      const agentId = process.env.NEXT_PUBLIC_ELEVENLABS_AGENT_ID;
+      if (!agentId) {
+        setVoiceError("Voice agent not configured.");
+        return;
+      }
+
+      // Permission + device enumeration happen lazily here so the text
+      // surface never asks for mic access unless the user opts in.
+      if (mics.length === 0) {
+        try {
+          await navigator.mediaDevices.getUserMedia({ audio: true });
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          const audioInputs = devices.filter((d) => d.kind === "audioinput");
+          setMics(audioInputs);
+          if (audioInputs.length > 0 && !selectedMic) {
+            setSelectedMic(audioInputs[0].deviceId);
+          }
+        } catch {
+          setVoiceError("Microphone access is required.");
+          return;
+        }
+      }
+
+      // Reuse the user's shared conversation row so voice turns persist
+      // into the same thread as text.
+      if (user && supabase && !voiceConvoIdRef.current) {
+        const id = await getOrCreateActiveConversation(supabase, user.id, "voice");
+        if (id) voiceConvoIdRef.current = id;
+      }
+
+      const dynamicVariables: Record<string, string> = {};
+      if (onboardingData) {
+        if (onboardingData.bringYouHere) dynamicVariables.bring_you_here = String(onboardingData.bringYouHere);
+        if (onboardingData.vision) dynamicVariables.vision = String(onboardingData.vision);
+        if (onboardingData.priorityArea) dynamicVariables.priority_area = String(onboardingData.priorityArea);
+        if (onboardingData.coachingStyle) dynamicVariables.coaching_style = String(onboardingData.coachingStyle);
+      }
+
+      // prior_context wiring shelved — voice session was disconnecting
+      // immediately once the agent prompt referenced {{prior_context}}.
+      // Agent prompt reverted via API; client no longer passes the
+      // variable. Revisit after MVP validation.
+
+      await voice.startSession({
+        agentId,
+        connectionType: "websocket",
+        ...(selectedMic ? { inputDeviceId: selectedMic } : {}),
+        ...(Object.keys(dynamicVariables).length > 0 ? { dynamicVariables } : {}),
+      });
+      setVoiceActive(true);
+    } catch (err) {
+      setVoiceError(err instanceof Error ? err.message : String(err));
+    }
+  }, [voice, mics, selectedMic, onboardingData, user, supabase]);
+
+  const stopVoice = useCallback(async () => {
+    try {
+      await voice.endSession();
+    } catch {
+      // ignore
+    }
+    setVoiceActive(false);
+    setMicMenuOpen(false);
+  }, [voice]);
 
   const sendMessage = useCallback(async () => {
     const text = input.trim();
@@ -341,13 +530,17 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
   return (
     <div className={outerClass}>
       <div className={innerClass}>
-        {/* Header */}
-        <header className="flex items-center justify-between px-5 py-3 border-b border-border shrink-0">
-          <div className="flex items-center gap-3">
+        {/* Header — rendered only when we're a standalone surface
+            (e.g. legacy /demo). The embedded /chat workspace uses the
+            global AppHeader, so a second "Sam / Online" strip here is
+            redundant and has been removed. */}
+        {!embedded && (
+          <header className="flex items-center gap-3 px-5 py-3 border-b border-border shrink-0">
             {onBack && (
               <button
                 onClick={onBack}
                 className="text-text-soft text-xl px-1 py-1 mr-1"
+                aria-label="Back"
               >
                 &#8592;
               </button>
@@ -361,8 +554,8 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
                 {isStreaming ? "Typing..." : "Online"}
               </p>
             </div>
-          </div>
-        </header>
+          </header>
+        )}
 
         {/* Error banner. Detect specific upstream failures and show a
             friendly explanation; fall back to the raw message otherwise. */}
@@ -391,13 +584,6 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
                   <div
                     className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
                   >
-                    {msg.role === "assistant" && (
-                      <div className="w-7 h-7 rounded-full bg-gradient-to-br from-accent to-primary flex items-center justify-center shrink-0 mr-2 mt-1">
-                        <span className="text-white text-xs font-semibold">
-                          S
-                        </span>
-                      </div>
-                    )}
                     <div
                       className={`max-w-[80%] px-4 py-3 rounded-2xl text-sm leading-relaxed ${
                         msg.role === "user"
@@ -423,7 +609,7 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
                   {cardsAfter.map((card) => (
                     <div
                       key={card.id}
-                      className="ml-9 mt-2 flex items-center gap-2.5 bg-bg border border-border rounded-xl px-3 py-2 animate-[fadeSlideIn_0.3s_ease-out]"
+                      className="mt-2 flex items-center gap-2.5 bg-bg border border-border rounded-xl px-3 py-2 animate-[fadeSlideIn_0.3s_ease-out]"
                     >
                       <span className="text-sm">
                         {card.category === "issue" ? "\uD83D\uDFE1" : card.category === "goal" ? "\uD83C\uDFAF" : "\u2705"}
@@ -489,44 +675,121 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
           </div>
         )}
 
-        {/* Input */}
+        {/* Input / voice bar */}
         <div className="px-5 pb-5 pt-4 border-t border-border shrink-0">
-          <div className="flex items-end gap-2">
-            <textarea
-              ref={inputRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Brain dump here. What's on your mind?"
-              disabled={isStreaming}
-              rows={2}
-              className="flex-1 resize-none rounded-2xl border border-border bg-bg px-4 py-3 text-[15px] text-text leading-snug
-                         placeholder:text-text-muted focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/15 transition-all
-                         disabled:opacity-50 min-h-[56px] max-h-32"
-              style={{ fieldSizing: "content" } as React.CSSProperties}
-            />
-            <button
-              onClick={sendMessage}
-              disabled={!input.trim() || isStreaming}
-              className="h-11 w-11 rounded-full bg-primary text-white flex items-center justify-center
-                         hover:bg-primary-dark active:scale-95 transition-all
-                         disabled:bg-border disabled:text-text-muted disabled:cursor-default"
-            >
-              <svg
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
+          {voiceError && (
+            <p className="text-xs text-red-600 mb-2">{voiceError}</p>
+          )}
+          {voiceActive ? (
+            <div className="flex items-center gap-2">
+              {/* Mic settings gear */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setMicMenuOpen((v) => !v)}
+                  aria-label="Microphone settings"
+                  title="Microphone settings"
+                  className="h-11 w-11 rounded-full flex items-center justify-center text-text-soft hover:bg-bg hover:text-primary transition-colors"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <circle cx="12" cy="12" r="3" />
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                  </svg>
+                </button>
+                {micMenuOpen && (
+                  <div role="menu" className="absolute bottom-full left-0 mb-2 w-64 bg-card border border-border rounded-xl shadow-lg py-1 overflow-hidden z-10">
+                    <p className="px-3 py-2 text-xs font-semibold uppercase tracking-wider text-text-muted border-b border-border">
+                      Microphone
+                    </p>
+                    {mics.length === 0 ? (
+                      <p className="px-3 py-2 text-sm text-text-muted">No devices</p>
+                    ) : (
+                      mics.map((mic) => (
+                        <button
+                          key={mic.deviceId}
+                          type="button"
+                          onClick={() => {
+                            setSelectedMic(mic.deviceId);
+                            setMicMenuOpen(false);
+                          }}
+                          className={`block w-full text-left px-3 py-2 text-sm truncate transition-colors ${
+                            mic.deviceId === selectedMic
+                              ? "bg-primary/5 text-primary font-medium"
+                              : "text-text hover:bg-bg"
+                          }`}
+                        >
+                          {mic.label || `Microphone ${mic.deviceId.slice(0, 6)}`}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Waveform visualizer. Bars track Sam's outgoing audio
+                  amplitude (agentVolume, 0..1 RMS). When she's silent
+                  or the user is talking, bars rest at the minimum
+                  height. Center bars amplify most, edges stay smaller,
+                  so the shape feels like a real voice waveform. */}
+              <div
+                className="flex-1 flex items-center justify-center gap-1 h-[56px] rounded-2xl bg-bg border border-border"
+                aria-label={voice.isSpeaking ? "Sam is speaking" : "Listening"}
               >
-                <line x1="22" y1="2" x2="11" y2="13" />
-                <polygon points="22 2 15 22 11 13 2 9 22 2" />
-              </svg>
-            </button>
-          </div>
+                {[0, 1, 2, 3, 4, 5, 6].map((i) => {
+                  const centerBias = 1 - Math.abs(i - 3) / 3;
+                  const amp = Math.min(1, agentVolume * 1.5);
+                  const heightPx = 6 + amp * centerBias * 34 + amp * 6;
+                  return (
+                    <span
+                      key={i}
+                      className="inline-block w-1 rounded-full bg-primary transition-[height] duration-75 ease-out"
+                      style={{ height: `${heightPx}px` }}
+                    />
+                  );
+                })}
+              </div>
+
+              {/* Stop button */}
+              <button
+                type="button"
+                onClick={stopVoice}
+                aria-label="Stop voice"
+                title="Stop voice"
+                className="h-11 w-11 rounded-full bg-primary text-white flex items-center justify-center hover:bg-primary-dark active:scale-95 transition-all"
+              >
+                <span className="block w-3.5 h-3.5 bg-white rounded-sm" aria-hidden="true" />
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-end gap-2">
+              <textarea
+                ref={inputRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Brain dump here. What's on your mind?"
+                disabled={isStreaming}
+                rows={2}
+                className="flex-1 resize-none rounded-2xl border border-border bg-bg px-4 py-3 text-[15px] text-text leading-snug
+                           placeholder:text-text-muted focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/15 transition-all
+                           disabled:opacity-50 min-h-[56px] max-h-32"
+                style={{ fieldSizing: "content" } as React.CSSProperties}
+              />
+              <button
+                onClick={sendMessage}
+                disabled={!input.trim() || isStreaming}
+                aria-label="Send message"
+                className="h-11 w-11 rounded-full bg-primary text-white flex items-center justify-center
+                           hover:bg-primary-dark active:scale-95 transition-all
+                           disabled:bg-border disabled:text-text-muted disabled:cursor-default"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="22" y1="2" x2="11" y2="13" />
+                  <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                </svg>
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

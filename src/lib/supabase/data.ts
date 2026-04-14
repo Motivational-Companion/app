@@ -66,10 +66,11 @@ export async function createConversation(
 }
 
 /**
- * Return the id of the user's current active conversation for the given mode,
- * creating one if none exists. This is the single source of truth for
- * "what conversation am I in right now" and prevents the bug where switching
- * views inside /chat spawns a new conversation record per mount.
+ * Return the id of the user's current active conversation — shared across
+ * text and voice modes so both surfaces append to the same thread. `mode`
+ * is recorded on the row when it's created but is NOT used to partition
+ * lookups. If the user has any open conversation, we reuse it. Otherwise
+ * create a new one tagged with the mode that initiated it.
  */
 export async function getOrCreateActiveConversation(
   supabase: SupabaseClient,
@@ -80,7 +81,6 @@ export async function getOrCreateActiveConversation(
     .from("conversations")
     .select("id")
     .eq("user_id", userId)
-    .eq("mode", mode)
     .is("ended_at", null)
     .order("started_at", { ascending: false })
     .limit(1);
@@ -95,6 +95,32 @@ export async function getOrCreateActiveConversation(
   }
 
   return createConversation(supabase, userId, mode);
+}
+
+/**
+ * Load every message on a conversation, oldest first, so we can hydrate
+ * the UI when a user returns to their thread. Returns an empty array on
+ * error (caller falls back to a fresh greeting).
+ */
+export async function loadMessages(
+  supabase: SupabaseClient,
+  conversationId: string
+): Promise<Array<{ role: "user" | "assistant"; content: string }>> {
+  const { data, error } = await supabase
+    .from("messages")
+    .select("role, content")
+    .eq("conversation_id", conversationId)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    console.error("Failed to load messages:", error);
+    return [];
+  }
+
+  return (data ?? []).map((row) => ({
+    role: row.role as "user" | "assistant",
+    content: row.content as string,
+  }));
 }
 
 export async function saveMessage(
@@ -188,6 +214,26 @@ export async function loadActiveTasks(supabase: SupabaseClient, userId: string) 
   }
 
   return { issues, goals, tasks };
+}
+
+export async function updateTaskFields(
+  supabase: SupabaseClient,
+  taskId: string,
+  fields: { title?: string; timeframe?: string | null }
+) {
+  const updates: Record<string, unknown> = {};
+  if (fields.title !== undefined) updates.title = fields.title;
+  if (fields.timeframe !== undefined) updates.timeframe = fields.timeframe;
+  if (Object.keys(updates).length === 0) return;
+
+  const { error } = await supabase
+    .from("tasks")
+    .update(updates)
+    .eq("id", taskId);
+  if (error) {
+    console.error("Failed to update task fields:", error);
+    throw error;
+  }
 }
 
 export async function updateTaskStatus(

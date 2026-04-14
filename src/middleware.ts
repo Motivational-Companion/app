@@ -36,39 +36,42 @@ export async function middleware(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const pathname = request.nextUrl.pathname;
+  const isProtected = isProtectedRoute(pathname);
+  // Routes we send already-authed users away FROM. Avoids the "authed user
+  // sees marketing or signin page" footgun. Keep the list tight — only
+  // surfaces where an authed user should clearly be redirected into the app.
+  const redirectAwayFromIfAuthed =
+    pathname === "/" || pathname === "/signin";
 
-  // Gate protected routes behind auth + active subscription
-  if (isProtectedRoute(pathname)) {
-    if (!user) {
-      return NextResponse.redirect(new URL("/", request.url));
-    }
+  // Only query the profile when we actually need the subscription status
+  // — saves one roundtrip on most requests.
+  const needsSubscriptionCheck =
+    isProtected || (redirectAwayFromIfAuthed && user);
 
-    // Check subscription status in profile
+  let subscriptionStatus: string | null = null;
+  if (needsSubscriptionCheck && user) {
     const { data: profile } = await supabase
       .from("profiles")
       .select("subscription_status")
       .eq("id", user.id)
       .single();
+    subscriptionStatus = profile?.subscription_status ?? null;
+  }
 
-    const status = profile?.subscription_status;
-    if (status !== "active" && status !== "trialing") {
+  const hasActiveSubscription =
+    subscriptionStatus === "active" || subscriptionStatus === "trialing";
+
+  // Protected routes (e.g. /chat): require auth AND active subscription.
+  if (isProtected) {
+    if (!user || !hasActiveSubscription) {
       return NextResponse.redirect(new URL("/", request.url));
     }
   }
 
-  // If an authenticated + subscribed user hits the marketing landing, send
-  // them straight to the app. Anonymous users still see the marketing page.
-  if (pathname === "/" && user) {
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("subscription_status")
-      .eq("id", user.id)
-      .single();
-
-    const status = profile?.subscription_status;
-    if (status === "active" || status === "trialing") {
-      return NextResponse.redirect(new URL("/chat", request.url));
-    }
+  // Marketing and signin pages: if the user is already paid + authed, send
+  // them straight into the app instead of the funnel / sign-in form.
+  if (redirectAwayFromIfAuthed && user && hasActiveSubscription) {
+    return NextResponse.redirect(new URL("/chat", request.url));
   }
 
   return supabaseResponse;

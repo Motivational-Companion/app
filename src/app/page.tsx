@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import AppHeader from "@/components/AppHeader";
 import MarketingLanding from "@/components/MarketingLanding";
 import QuizFunnel from "@/components/QuizFunnel";
 
@@ -9,7 +9,6 @@ type Mode = "landing" | "quiz";
 
 export default function Home() {
   const [mode, setMode] = useState<Mode>("landing");
-  const router = useRouter();
 
   const handleCheckout = async (plan: "annual" | "monthly") => {
     try {
@@ -36,9 +35,9 @@ export default function Home() {
   }
 
   return (
-    <MarketingLanding
-      onStartQuiz={() => setMode("quiz")}
-      onGoToDemo={() => router.push("/demo")}
-    />
+    <>
+      <AppHeader variant="landing" />
+      <MarketingLanding onStartQuiz={() => setMode("quiz")} />
+    </>
   );
 }

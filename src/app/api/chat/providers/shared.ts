@@ -53,7 +53,7 @@ export function buildSystemPrompt(
   }
 
   if (existingTasks) {
-    systemPrompt += `\n\n## Existing Board Items\nThe user already has these items on their board:\n${existingTasks}\nDo NOT re-note items that are already on their board. Only use note tools for NEW items that come up in this conversation.`;
+    systemPrompt += `\n\n## Existing Board Items\nThe user already has these items on their board (format: "[id] title"):\n${existingTasks}\nDo NOT re-note items that are already on their board. Only use note tools for NEW items. If the user refines one of the existing items (changes scope, deadline, or phrasing), call the matching note tool with that item's id so the row updates in place instead of duplicating.`;
   }
 
   return systemPrompt;

@@ -322,10 +322,13 @@ export const EXTRACT_ACTION_PLAN_TOOL = {
 /**
  * Inline tools for noting issues, goals, and tasks during conversation.
  */
+const NOTE_ID_DESCRIPTION =
+  "Optional. The id of an existing item shown in the 'Existing Board Items' context. Include this ONLY when refining or updating that item (e.g., user changed their mind about a deadline or scope). Leave blank to create a new item.";
+
 export const NOTE_ISSUE_TOOL = {
   name: "note_issue",
   description:
-    "Note an issue or challenge the user is facing. Call this as soon as you identify a problem, not at the end of the conversation.",
+    "Note an issue or challenge the user is facing. Call this as soon as you identify a problem, not at the end of the conversation. If the user is refining an issue already on their board, pass that item's id so it updates in place instead of creating a duplicate.",
   input_schema: {
     type: "object" as const,
     properties: {
@@ -333,6 +336,7 @@ export const NOTE_ISSUE_TOOL = {
         type: "string",
         description: "Brief title for the issue, 3-8 words",
       },
+      id: { type: "string", description: NOTE_ID_DESCRIPTION },
     },
     required: ["title"],
   },
@@ -341,7 +345,7 @@ export const NOTE_ISSUE_TOOL = {
 export const NOTE_GOAL_TOOL = {
   name: "note_goal",
   description:
-    "Note a goal the user wants to achieve. Call this as soon as you identify an aspiration or desired outcome.",
+    "Note a goal the user wants to achieve. Call this as soon as you identify an aspiration or desired outcome. If the user is refining a goal already on their board, pass that item's id so it updates in place instead of creating a duplicate.",
   input_schema: {
     type: "object" as const,
     properties: {
@@ -349,6 +353,7 @@ export const NOTE_GOAL_TOOL = {
         type: "string",
         description: "Brief title for the goal, 3-8 words",
       },
+      id: { type: "string", description: NOTE_ID_DESCRIPTION },
     },
     required: ["title"],
   },
@@ -357,7 +362,7 @@ export const NOTE_GOAL_TOOL = {
 export const NOTE_TASK_TOOL = {
   name: "note_task",
   description:
-    "Note a specific action item or to-do. Call this when you and the user agree on a concrete next step.",
+    "Note a specific action item or to-do. Call this when you and the user agree on a concrete next step. If the user is refining a task already on their board (e.g., changing the deadline), pass that item's id so it updates in place instead of creating a duplicate.",
   input_schema: {
     type: "object" as const,
     properties: {
@@ -369,6 +374,7 @@ export const NOTE_TASK_TOOL = {
         type: "string",
         description: "When to do it (e.g., 'Tomorrow morning', 'By Friday')",
       },
+      id: { type: "string", description: NOTE_ID_DESCRIPTION },
     },
     required: ["title"],
   },
