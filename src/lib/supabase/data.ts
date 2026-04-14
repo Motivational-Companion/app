@@ -66,11 +66,12 @@ export async function createConversation(
 }
 
 /**
- * Return the id of the user's current active conversation — shared across
- * text and voice modes so both surfaces append to the same thread. `mode`
- * is recorded on the row when it's created but is NOT used to partition
- * lookups. If the user has any open conversation, we reuse it. Otherwise
- * create a new one tagged with the mode that initiated it.
+ * Return the id of the user's GLOBAL brain-dump conversation — the row
+ * with task_id IS NULL. Task-scoped threads (task_id != NULL) are
+ * resolved separately via getOrCreateTaskConversation. Shared across
+ * text and voice modes so both surfaces append to the same global
+ * thread. Mode is recorded on creation but isn't used to partition
+ * lookups.
  */
 export async function getOrCreateActiveConversation(
   supabase: SupabaseClient,
@@ -81,6 +82,7 @@ export async function getOrCreateActiveConversation(
     .from("conversations")
     .select("id")
     .eq("user_id", userId)
+    .is("task_id", null)
     .is("ended_at", null)
     .order("started_at", { ascending: false })
     .limit(1);
@@ -202,10 +204,14 @@ export async function loadActiveTasks(supabase: SupabaseClient, userId: string) 
   const tasks: NoteItem[] = [];
 
   for (const row of data || []) {
+    // Skip subtasks here — they're loaded with their parent in the
+    // task detail pane, not as standalone drawer entries.
+    if (row.parent_task_id) continue;
     const item: NoteItem = {
       id: row.id,
       text: row.title,
       timeframe: row.timeframe || undefined,
+      description: row.description ?? null,
       addedAt: new Date(row.created_at).getTime(),
     };
     if (row.list_type === "issue") issues.push(item);
@@ -261,6 +267,163 @@ export async function deleteTask(supabase: SupabaseClient, taskId: string) {
   if (error) {
     console.error("Failed to delete task:", error);
   }
+}
+
+// ── Task detail (description, due date, subtasks) ──
+
+export type TaskRow = {
+  id: string;
+  user_id: string;
+  list_type: "issue" | "goal" | "task";
+  title: string;
+  timeframe: string | null;
+  status: "active" | "completed" | "snoozed" | "dismissed";
+  description: string | null;
+  due_date: string | null;
+  parent_task_id: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TaskDetail = {
+  task: TaskRow;
+  subtasks: TaskRow[];
+  parent: TaskRow | null;
+};
+
+export async function loadTaskDetail(
+  supabase: SupabaseClient,
+  taskId: string
+): Promise<TaskDetail | null> {
+  const { data: task, error: taskError } = await supabase
+    .from("tasks")
+    .select("*")
+    .eq("id", taskId)
+    .single();
+
+  if (taskError || !task) {
+    console.error("Failed to load task:", taskError);
+    return null;
+  }
+
+  const taskRow = task as TaskRow;
+
+  const subtasksPromise = supabase
+    .from("tasks")
+    .select("*")
+    .eq("parent_task_id", taskId)
+    .order("created_at");
+
+  const parentPromise = taskRow.parent_task_id
+    ? supabase
+        .from("tasks")
+        .select("*")
+        .eq("id", taskRow.parent_task_id)
+        .single()
+    : Promise.resolve({ data: null, error: null });
+
+  const [{ data: subtasks, error: subError }, { data: parent, error: parentErr }] =
+    await Promise.all([subtasksPromise, parentPromise]);
+
+  if (subError) console.error("Failed to load subtasks:", subError);
+  if (parentErr) console.error("Failed to load parent task:", parentErr);
+
+  return {
+    task: taskRow,
+    subtasks: (subtasks ?? []) as TaskRow[],
+    parent: (parent as TaskRow) ?? null,
+  };
+}
+
+export async function updateTaskDescription(
+  supabase: SupabaseClient,
+  taskId: string,
+  description: string
+) {
+  const { error } = await supabase
+    .from("tasks")
+    .update({ description })
+    .eq("id", taskId);
+  if (error) {
+    console.error("Failed to update task description:", error);
+    throw error;
+  }
+}
+
+export async function updateTaskDueDate(
+  supabase: SupabaseClient,
+  taskId: string,
+  dueDate: string | null
+) {
+  const { error } = await supabase
+    .from("tasks")
+    .update({ due_date: dueDate })
+    .eq("id", taskId);
+  if (error) {
+    console.error("Failed to update due date:", error);
+    throw error;
+  }
+}
+
+export async function addSubtask(
+  supabase: SupabaseClient,
+  userId: string,
+  parentTaskId: string,
+  title: string
+): Promise<TaskRow | null> {
+  const { data, error } = await supabase
+    .from("tasks")
+    .insert({
+      user_id: userId,
+      parent_task_id: parentTaskId,
+      list_type: "task",
+      title,
+    })
+    .select("*")
+    .single();
+  if (error) {
+    console.error("Failed to add subtask:", error);
+    return null;
+  }
+  return data as TaskRow;
+}
+
+// ── Per-task conversations ──
+
+export async function getOrCreateTaskConversation(
+  supabase: SupabaseClient,
+  userId: string,
+  taskId: string
+): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("conversations")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("task_id", taskId)
+    .is("ended_at", null)
+    .order("started_at", { ascending: false })
+    .limit(1);
+
+  if (error) {
+    console.error("Failed to look up task conversation:", error);
+    return null;
+  }
+
+  if (data && data.length > 0) {
+    return data[0].id;
+  }
+
+  const { data: created, error: createErr } = await supabase
+    .from("conversations")
+    .insert({ user_id: userId, mode: "text", task_id: taskId })
+    .select("id")
+    .single();
+
+  if (createErr) {
+    console.error("Failed to create task conversation:", createErr);
+    return null;
+  }
+  return created.id;
 }
 
 // ── Action Plans ──

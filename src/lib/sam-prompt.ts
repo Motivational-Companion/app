@@ -381,6 +381,52 @@ export const NOTE_TASK_TOOL = {
 };
 
 /**
+ * First message Sam says when a user opens a task's dedicated chat
+ * with no prior history. Context-aware: references the task title
+ * and (if present) the parent goal it rolls up to. Asks the user
+ * to bring Sam up to speed rather than starting from "Hey, I'm Sam."
+ */
+type TaskFirstMessageInput = {
+  title: string;
+  parent?: { title: string; listType: "issue" | "goal" | "task" } | null;
+  description?: string | null;
+};
+
+export function buildTaskFirstMessage(input: TaskFirstMessageInput): string {
+  const lead = input.parent
+    ? `So you're working on "${input.title}", which rolls up to your ${input.parent.listType} "${input.parent.title}".`
+    : `So you're working on "${input.title}".`;
+  const followUp = input.description
+    ? `What's the latest? Anything to add to the picture, or somewhere you'd like help moving forward?`
+    : `Tell me what's going on with this. What you've got so far, where you're stuck, or what kind of help you'd like.`;
+  return `${lead} ${followUp}`;
+}
+
+/**
+ * Tool for refining a task's long-form description while in its
+ * dedicated pane. Fires only in the task-focus chat surface (i.e.
+ * when the request body carries taskFocus). Sam is instructed to
+ * call this when the conversation reveals durable context about
+ * scope / timeline / approach that would help on return visits.
+ */
+export const UPDATE_TASK_DESCRIPTION_TOOL = {
+  name: "update_task_description",
+  description:
+    "Update the current task's durable description with refined context about scope, timeline, approach, or constraints. Only call when focused on a specific task (the system prompt will include 'Current Task Focus' context). Write for a future reader returning to the task, not a summary of this chat.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      description: {
+        type: "string",
+        description:
+          "The full refined description. Replaces (not appends to) the prior description.",
+      },
+    },
+    required: ["description"],
+  },
+};
+
+/**
  * Sam's system prompt for daily check-in conversations.
  * Shorter and more focused than the initial conversation.
  * Reviews yesterday's progress and plans today.

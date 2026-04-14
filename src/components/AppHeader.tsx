@@ -6,9 +6,15 @@ import { useAuth } from "@/lib/supabase/useAuth";
 
 type Props = {
   variant?: "landing" | "app";
+  /**
+   * Mobile hamburger. Only renders when provided (i.e. the page has a
+   * drawer). The desktop drawer is persistent so the toggle is no-op
+   * above md.
+   */
+  onToggleDrawer?: () => void;
 };
 
-export default function AppHeader({ variant = "app" }: Props) {
+export default function AppHeader({ variant = "app", onToggleDrawer }: Props) {
   const { user, supabase } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -47,7 +53,31 @@ export default function AppHeader({ variant = "app" }: Props) {
           : "w-full bg-card border-b border-border sticky top-0 z-30"
       }
     >
-      <div className="max-w-[1400px] mx-auto px-4 md:px-6 h-14 md:h-16 flex items-center justify-between">
+      <div className="max-w-[1400px] mx-auto px-4 md:px-6 h-14 md:h-16 flex items-center justify-between gap-2">
+        {onToggleDrawer && (
+          <button
+            type="button"
+            onClick={onToggleDrawer}
+            aria-label="Toggle navigation"
+            className="md:hidden h-9 w-9 flex items-center justify-center text-text-soft hover:text-text rounded-lg hover:bg-bg transition-colors"
+          >
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <line x1="3" y1="6" x2="21" y2="6" />
+              <line x1="3" y1="12" x2="21" y2="12" />
+              <line x1="3" y1="18" x2="21" y2="18" />
+            </svg>
+          </button>
+        )}
         <Link href={user ? "/chat" : "/"} className="flex items-center gap-2.5 group">
           <span className="w-8 h-8 rounded-full bg-gradient-to-br from-accent to-primary flex items-center justify-center">
             <span className="text-white text-sm font-semibold">MC</span>

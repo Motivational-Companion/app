@@ -108,7 +108,7 @@ type StreamDelta = {
 export async function handleMoonshotChat(
   body: ChatRequestBody
 ): Promise<Response> {
-  const { messages, onboardingContext, mode, taskContext, existingTasks } =
+  const { messages, onboardingContext, mode, taskContext, existingTasks, taskFocus } =
     body;
   const chatMode: ChatMode = mode === "checkin" ? "checkin" : "chat";
 
@@ -124,7 +124,8 @@ export async function handleMoonshotChat(
       chatMode,
       onboardingContext,
       taskContext,
-      existingTasks
+      existingTasks,
+      taskFocus
     );
 
     let conversationMessages: OpenAIMessage[] = [
