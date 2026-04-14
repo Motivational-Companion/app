@@ -530,9 +530,12 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
   return (
     <div className={outerClass}>
       <div className={innerClass}>
-        {/* Header */}
-        <header className="flex items-center justify-between px-5 py-3 border-b border-border shrink-0">
-          <div className="flex items-center gap-3">
+        {/* Header — rendered only when we're a standalone surface
+            (e.g. legacy /demo). The embedded /chat workspace uses the
+            global AppHeader, so a second "Sam / Online" strip here is
+            redundant and has been removed. */}
+        {!embedded && (
+          <header className="flex items-center gap-3 px-5 py-3 border-b border-border shrink-0">
             {onBack && (
               <button
                 onClick={onBack}
@@ -551,8 +554,8 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
                 {isStreaming ? "Typing..." : "Online"}
               </p>
             </div>
-          </div>
-        </header>
+          </header>
+        )}
 
         {/* Error banner. Detect specific upstream failures and show a
             friendly explanation; fall back to the raw message otherwise. */}
