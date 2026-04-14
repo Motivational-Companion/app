@@ -30,6 +30,14 @@ export default function AppHeader({ variant = "app" }: Props) {
   };
 
   const emailInitial = user?.email?.[0]?.toUpperCase() ?? "?";
+  const maskedEmail = (() => {
+    const email = user?.email;
+    if (!email) return "";
+    const [local, domain] = email.split("@");
+    if (!domain) return "Signed in";
+    const visible = local.slice(0, 1);
+    return `${visible}${"*".repeat(Math.max(3, local.length - 1))}@${domain}`;
+  })();
 
   return (
     <header
@@ -55,16 +63,12 @@ export default function AppHeader({ variant = "app" }: Props) {
               <button
                 type="button"
                 onClick={() => setMenuOpen((v) => !v)}
-                className="flex items-center gap-2 pl-2 pr-3 h-9 rounded-full hover:bg-bg transition-colors"
+                className="h-9 w-9 rounded-full bg-accent-soft text-primary text-sm font-semibold flex items-center justify-center hover:bg-accent-soft/70 transition-colors"
                 aria-haspopup="menu"
                 aria-expanded={menuOpen}
+                aria-label="Account menu"
               >
-                <span className="w-7 h-7 rounded-full bg-accent-soft text-primary text-xs font-semibold flex items-center justify-center">
-                  {emailInitial}
-                </span>
-                <span className="hidden md:inline text-sm text-text-soft truncate max-w-[180px]">
-                  {user.email}
-                </span>
+                {emailInitial}
               </button>
               {menuOpen && (
                 <div
@@ -73,7 +77,7 @@ export default function AppHeader({ variant = "app" }: Props) {
                 >
                   <div className="px-3 py-2 border-b border-border mb-1">
                     <p className="text-xs text-text-muted">Signed in as</p>
-                    <p className="text-sm text-text truncate">{user.email}</p>
+                    <p className="text-sm text-text truncate">{maskedEmail}</p>
                   </div>
                   <Link
                     href="/account"
