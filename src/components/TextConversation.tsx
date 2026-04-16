@@ -722,8 +722,10 @@ export default function TextConversation({ onBack, onboardingData, chatMode = "c
           </div>
         )}
 
-        {/* Input / voice bar */}
-        <div className="px-5 pb-5 pt-4 border-t border-border shrink-0">
+        {/* Input / voice bar. Bottom padding extends into the iOS
+            home-indicator safe area so the compose bar anchors to the
+            screen edge cleanly. */}
+        <div className="px-5 pt-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] border-t border-border shrink-0">
           {voiceError && (
             <p className="text-xs text-red-600 mb-2">{voiceError}</p>
           )}

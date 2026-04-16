@@ -69,8 +69,10 @@ export default function AppDrawer({ onRequestClose, onCollapse }: Props) {
   return (
     <div className="h-full flex flex-col bg-card md:bg-bg">
       {/* Sticky header: Talk with Sam + collapse toggle on one row,
-          flush at the top of the drawer. */}
-      <div className="shrink-0 px-3 pt-2 pb-3 border-b border-border flex items-center gap-2">
+          flush at the top of the drawer. Top padding extends into the
+          iOS status-bar / notch safe area so the button never bumps
+          against system chrome. */}
+      <div className="shrink-0 px-3 pt-[max(0.5rem,env(safe-area-inset-top))] pb-3 border-b border-border flex items-center gap-2">
         <Link
           href="/chat"
           onClick={onRequestClose}
@@ -203,8 +205,10 @@ export default function AppDrawer({ onRequestClose, onCollapse }: Props) {
         })}
       </div>
 
-      {/* Sticky footer — account chip. Sign-out lives on /account. */}
-      <div className="shrink-0 border-t border-border px-3 py-3">
+      {/* Sticky footer — account chip. Sign-out lives on /account.
+          Bottom padding extends into the iOS home-indicator safe area
+          so the chip visually anchors to the bottom of the drawer. */}
+      <div className="shrink-0 border-t border-border px-3 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
         <Link
           href="/account"
           onClick={onRequestClose}
