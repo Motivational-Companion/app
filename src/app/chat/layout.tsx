@@ -46,41 +46,50 @@ export default function ChatLayout({ children }: { children: ReactNode }) {
         )}
 
         <div className="flex-1 min-h-0 min-w-0 relative">
-          {/* Open-drawer toggle. Only renders when the drawer is closed
-              — when open, the same control lives inside the drawer's
-              sticky header (so the icon is always next to the drawer's
-              edge, never over the chat). */}
+          {/* Open-drawer toggle. Renders only when the drawer is
+              closed — when open, the collapse control lives inside
+              the drawer's sticky header.
+
+              Mobile: iOS-style floating circle. A blurred translucent
+              strip at the top of the viewport gives the button
+              something to sit on as chat content scrolls underneath,
+              so the icon stays legible without claiming a layout row.
+              Chat fills full-bleed behind it.
+
+              Desktop: same circular button, no top blur strip. */}
           {!drawerOpen && (
-            <button
-              type="button"
-              onClick={() => setDrawerOpen(true)}
-              aria-label="Open sidebar"
-              className="absolute top-2 left-2 z-30 h-9 w-9 flex items-center justify-center text-text-soft hover:text-text rounded-lg bg-bg/70 backdrop-blur hover:bg-card transition-colors"
-            >
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
+            <>
+              <div
                 aria-hidden="true"
+                className="md:hidden pointer-events-none absolute top-0 left-0 right-0 h-14 bg-bg/50 backdrop-blur-md z-20"
+              />
+              <button
+                type="button"
+                onClick={() => setDrawerOpen(true)}
+                aria-label="Open sidebar"
+                className="absolute top-3 left-3 z-30 h-10 w-10 flex items-center justify-center text-text-soft hover:text-text rounded-full bg-card/80 backdrop-blur shadow-sm border border-border/60 hover:bg-card active:scale-95 transition-all"
               >
-                <rect width="18" height="18" x="3" y="3" rx="2" />
-                <path d="M9 3v2" />
-                <path d="M9 9v1" />
-                <path d="M9 14v1" />
-                <path d="M9 19v2" />
-              </svg>
-            </button>
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <rect width="18" height="18" x="3" y="3" rx="2" />
+                  <path d="M9 3v2" />
+                  <path d="M9 9v1" />
+                  <path d="M9 14v1" />
+                  <path d="M9 19v2" />
+                </svg>
+              </button>
+            </>
           )}
-          <main
-            className={`h-full min-h-[100dvh] min-w-0 ${
-              drawerOpen ? "" : "pl-12"
-            }`}
-          >
+          <main className="h-full min-h-[100dvh] min-w-0 bg-card">
             {children}
           </main>
         </div>
