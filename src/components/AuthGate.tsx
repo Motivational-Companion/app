@@ -18,6 +18,20 @@ type Props = {
 };
 
 const RESEND_COOLDOWN_SECONDS = 30;
+const RATE_LIMIT_FALLBACK_SECONDS = 60;
+
+// Supabase returns "For security purposes, you can only request this after N
+// seconds" or "email rate limit exceeded". Detect both and extract N when
+// present. Returns seconds to wait, or null if the error is not a rate limit.
+function parseRateLimit(message: string | undefined): number | null {
+  if (!message) return null;
+  const lower = message.toLowerCase();
+  const secondsMatch = lower.match(/after\s+(\d+)\s+seconds?/);
+  if (secondsMatch) return Math.max(1, parseInt(secondsMatch[1], 10));
+  if (lower.includes("rate limit") || lower.includes("too many"))
+    return RATE_LIMIT_FALLBACK_SECONDS;
+  return null;
+}
 
 const COPY: Record<Variant, {
   heading: string;
@@ -62,6 +76,7 @@ export default function AuthGate({
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [rateLimited, setRateLimited] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
   const [autoSendState, setAutoSendState] = useState<
     "idle" | "sending" | "sent" | "failed"
@@ -96,6 +111,19 @@ export default function AuthGate({
     if (!supabase) onAuthenticated();
   }, [supabase, onAuthenticated]);
 
+  // Apply a rate-limit response: clear any prior error and start the
+  // cooldown. The notice text is derived in render from the cooldown so
+  // it ticks down live. Returns true when the send response was a
+  // rate-limit so callers can skip their normal error handling.
+  const applyRateLimit = useCallback((message: string | undefined): boolean => {
+    const seconds = parseRateLimit(message);
+    if (seconds == null) return false;
+    setError(null);
+    setRateLimited(true);
+    setResendCooldown(seconds);
+    return true;
+  }, []);
+
   // Auto-send OTP on mount when prefilledEmail is provided
   useEffect(() => {
     if (!prefilledEmail || !supabase || autoSendStarted.current) return;
@@ -107,23 +135,28 @@ export default function AuthGate({
       if (result.ok) {
         setAutoSendState("sent");
         setResendCooldown(RESEND_COOLDOWN_SECONDS);
-      } else {
-        setAutoSendState("failed");
-        setError(result.error ?? "Failed to send code");
+        return;
       }
+      setAutoSendState("sent"); // treat as sent: a prior code still works
+      if (applyRateLimit(result.error)) return;
+      setAutoSendState("failed");
+      setError(result.error ?? "Failed to send code");
     });
 
     return () => {
       cancelled = true;
     };
-  }, [prefilledEmail, supabase, sendCode]);
+  }, [prefilledEmail, supabase, sendCode, applyRateLimit]);
 
   // Resend cooldown countdown
   useEffect(() => {
-    if (resendCooldown <= 0) return;
+    if (resendCooldown <= 0) {
+      if (rateLimited) setRateLimited(false);
+      return;
+    }
     const timer = setTimeout(() => setResendCooldown((s) => s - 1), 1000);
     return () => clearTimeout(timer);
-  }, [resendCooldown]);
+  }, [resendCooldown, rateLimited]);
 
   if (!supabase) return null;
 
@@ -131,11 +164,19 @@ export default function AuthGate({
     e.preventDefault();
     setLoading(true);
     setError(null);
+    setRateLimited(false);
 
     const result = await sendCode(email);
     setLoading(false);
 
     if (!result.ok) {
+      // On rate-limit, still advance to the code step: a prior code is
+      // almost certainly in the user's inbox and will still work.
+      if (applyRateLimit(result.error)) {
+        setStep("code");
+        setAutoSendState("sent");
+        return;
+      }
       setError(result.error ?? "Something went wrong");
       return;
     }
@@ -200,15 +241,17 @@ export default function AuthGate({
     if (resendCooldown > 0 || loading || autoSendState === "sending") return;
     setLoading(true);
     setError(null);
+    setRateLimited(false);
 
     const result = await sendCode(email);
     setLoading(false);
 
     if (result.ok) {
       setResendCooldown(RESEND_COOLDOWN_SECONDS);
-    } else {
-      setError(result.error ?? "Failed to resend code");
+      return;
     }
+    if (applyRateLimit(result.error)) return;
+    setError(result.error ?? "Failed to resend code");
   };
 
   const handleUseDifferentEmail = () => {
@@ -216,6 +259,7 @@ export default function AuthGate({
     setCode("");
     setEmail("");
     setError(null);
+    setRateLimited(false);
     setAutoSendState("idle");
     setResendCooldown(0);
     // Intentionally do NOT reset autoSendStarted.current — the auto-send is a
@@ -290,6 +334,16 @@ export default function AuthGate({
         {error && (
           <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 mb-4" role="alert">
             <p className="text-sm text-red-700">{error}</p>
+          </div>
+        )}
+
+        {rateLimited && !error && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4" role="status">
+            <p className="text-sm text-amber-800">
+              A code was already sent recently. You can request a new one in{" "}
+              {resendCooldown}s — check your inbox for the latest code you
+              received.
+            </p>
           </div>
         )}
 
