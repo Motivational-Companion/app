@@ -206,7 +206,7 @@ export default function QuizFunnel({ onCheckout, onBack }: Props) {
           <OptionCard
             icon={"\u26A1"}
             title="I need accountability"
-            sub="I know what to do \u2014 I just don't do it"
+            sub="I know what to do — I just don't do it"
             selected={data.bringYouHere === "accountable"}
             onClick={() => selectSingle("bringYouHere", "accountable", 2)}
           />
@@ -238,7 +238,7 @@ export default function QuizFunnel({ onCheckout, onBack }: Props) {
             "Health/fitness/energy",
             "Personal project/goal",
             "Finances/money worries",
-            "General overwhelm \u2014 all of it",
+            "General overwhelm — all of it",
           ].map((item) => (
             <CompactOption
               key={item}
@@ -301,7 +301,7 @@ export default function QuizFunnel({ onCheckout, onBack }: Props) {
       <ScreenShell transitioning={transitioning} direction={direction}>
         <ProgressBar progress={progress} />
         <TopRow onBack={() => goTo(3)} onSkip={() => goTo(5)} />
-        <SamBubble text="That makes sense. You're not broken \u2014 you just don't have a system that works with your brain." />
+        <SamBubble text="That makes sense. You're not broken — you just don't have a system that works with your brain." />
         <h3 className="font-semibold text-sm text-text mt-3 mb-1">
           What have you tried before?
         </h3>
@@ -313,7 +313,7 @@ export default function QuizFunnel({ onCheckout, onBack }: Props) {
             ["\uD83D\uDCD6", "Journaling"],
             ["\uD83D\uDDE3\uFE0F", "Therapy/coaching"],
             ["\uD83C\uDFA7", "YouTube/podcasts/books"],
-            ["\uD83E\uDD37", "Nothing yet \u2014 this is my first try"],
+            ["\uD83E\uDD37", "Nothing yet — this is my first try"],
           ].map(([icon, label]) => (
             <CompactOption
               key={label}
@@ -533,7 +533,7 @@ export default function QuizFunnel({ onCheckout, onBack }: Props) {
           <OptionCard
             icon={"\uD83D\uDE4C"}
             title="Warm & encouraging"
-            sub={'"You\'ve got this \u2014 here\'s your next step"'}
+            sub={'"You\'ve got this — here\'s your next step"'}
             selected={data.coachingStyle === "warm"}
             onClick={() => selectSingle("coachingStyle", "warm", 10)}
           />
@@ -583,7 +583,7 @@ export default function QuizFunnel({ onCheckout, onBack }: Props) {
           <p className="text-sm text-text italic">
             {data.vision
               ? `\u201C${data.vision}\u201D`
-              : "\u201CWake up calm, clear, and in control \u2014 with time for what matters and the follow-through to make it happen.\u201D"}
+              : "\u201CWake up calm, clear, and in control — with time for what matters and the follow-through to make it happen.\u201D"}
           </p>
         </div>
 
