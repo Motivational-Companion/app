@@ -299,6 +299,37 @@ describe("AuthGate", () => {
       });
     });
 
+    it("rewrites Supabase 'Token' errors to 'code'", async () => {
+      mockVerifyOtp.mockResolvedValueOnce({
+        data: null,
+        error: { message: "Token has expired or is invalid" },
+      });
+
+      render(
+        <AuthGate
+          onAuthenticated={vi.fn()}
+          variant="post-purchase"
+          prefilledEmail="buyer@example.com"
+        />
+      );
+
+      await waitFor(() => {
+        expect(mockSignInWithOtp).toHaveBeenCalled();
+      });
+
+      fireEvent.change(
+        screen.getByLabelText(/6-digit verification code/i),
+        { target: { value: "999999" } }
+      );
+
+      await waitFor(() => {
+        expect(
+          screen.getByText(/code has expired or is invalid/i)
+        ).toBeInTheDocument();
+      });
+      expect(screen.queryByText(/token/i)).not.toBeInTheDocument();
+    });
+
     it("shows error and clears the code when verifyOtp fails", async () => {
       mockVerifyOtp.mockResolvedValueOnce({
         data: null,

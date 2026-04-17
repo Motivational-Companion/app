@@ -17,12 +17,22 @@ type Props = {
   prefilledEmail?: string;
 };
 
-const RESEND_COOLDOWN_SECONDS = 30;
+// Matches Supabase's smtp_max_frequency (configured at 60s for this project).
+// If the UI cooldown is shorter than the server's, users click Resend before
+// the server will accept another send and bounce off the rate limit.
+const RESEND_COOLDOWN_SECONDS = 60;
 const RATE_LIMIT_FALLBACK_SECONDS = 60;
 
 // Supabase returns "For security purposes, you can only request this after N
 // seconds" or "email rate limit exceeded". Detect both and extract N when
 // present. Returns seconds to wait, or null if the error is not a rate limit.
+// Supabase's verify-OTP errors use "Token" terminology. Rewrite to "code"
+// so the end-user copy stays consistent with the rest of the UI.
+function friendlyVerifyError(message: string | undefined): string {
+  if (!message) return "Something went wrong";
+  return message.replace(/\btoken\b/gi, "code");
+}
+
 function parseRateLimit(message: string | undefined): number | null {
   if (!message) return null;
   const lower = message.toLowerCase();
@@ -200,7 +210,7 @@ export default function AuthGate({
         });
 
         if (error) {
-          setError(error.message);
+          setError(friendlyVerifyError(error.message));
           // Clear the code field so the user can retype without manually
           // backspacing 6 characters
           setCode("");
@@ -209,7 +219,9 @@ export default function AuthGate({
 
         onAuthenticated();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Something went wrong");
+        setError(
+          friendlyVerifyError(err instanceof Error ? err.message : undefined)
+        );
         setCode("");
       } finally {
         setLoading(false);
