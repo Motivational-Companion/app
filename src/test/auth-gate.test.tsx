@@ -116,10 +116,10 @@ describe("AuthGate", () => {
       });
     });
 
-    it("displays error if auto-send fails", async () => {
+    it("displays error if auto-send fails with a non-rate-limit error", async () => {
       mockSignInWithOtp.mockResolvedValueOnce({
         data: null,
-        error: { message: "Rate limit exceeded" },
+        error: { message: "Invalid email address" },
       });
 
       render(
@@ -131,8 +131,38 @@ describe("AuthGate", () => {
       );
 
       await waitFor(() => {
-        expect(screen.getByText(/rate limit exceeded/i)).toBeInTheDocument();
+        expect(screen.getByText(/invalid email address/i)).toBeInTheDocument();
       });
+    });
+
+    it("converts rate-limit error to a friendly countdown notice", async () => {
+      mockSignInWithOtp.mockResolvedValueOnce({
+        data: null,
+        error: {
+          message:
+            "For security purposes, you can only request this after 42 seconds.",
+        },
+      });
+
+      render(
+        <AuthGate
+          onAuthenticated={vi.fn()}
+          variant="post-purchase"
+          prefilledEmail="buyer@example.com"
+        />
+      );
+
+      await waitFor(() => {
+        expect(
+          screen.getByText(/already sent recently.*request a new one in 42s/i)
+        ).toBeInTheDocument();
+      });
+      // The raw error should NOT be surfaced.
+      expect(
+        screen.queryByText(/for security purposes/i)
+      ).not.toBeInTheDocument();
+      // Resend button should reflect the same cooldown.
+      expect(screen.getByText(/resend in 42s/i)).toBeInTheDocument();
     });
 
     it("shows Resend code button on the code step", async () => {
@@ -316,6 +346,31 @@ describe("AuthGate", () => {
       fireEvent.change(codeInput, { target: { value: "12-34-56" } });
 
       expect(codeInput.value).toBe("123456");
+    });
+  });
+
+  describe("email-step rate limit", () => {
+    it("advances to code step and shows countdown when rate limited", async () => {
+      mockSignInWithOtp.mockResolvedValueOnce({
+        data: null,
+        error: {
+          message:
+            "For security purposes, you can only request this after 17 seconds.",
+        },
+      });
+
+      render(<AuthGate onAuthenticated={vi.fn()} />);
+      fireEvent.change(screen.getByPlaceholderText(/your email address/i), {
+        target: { value: "user@example.com" },
+      });
+      fireEvent.click(screen.getByText(/send sign-in link/i));
+
+      await waitFor(() => {
+        expect(
+          screen.getByRole("heading", { name: /check your email/i })
+        ).toBeInTheDocument();
+      });
+      expect(screen.getByText(/request a new one in 17s/i)).toBeInTheDocument();
     });
   });
 
